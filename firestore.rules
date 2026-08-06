@@ -1,0 +1,132 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    function signedIn() {
+      return request.auth != null;
+    }
+
+    function classDoc(classId) {
+      return get(/databases/$(database)/documents/classes/$(classId));
+    }
+
+    function boardDoc(classId, boardId) {
+      return get(/databases/$(database)/documents/classes/$(classId)/boards/$(boardId));
+    }
+
+    function isClassOwner(classId) {
+      return signedIn() && classDoc(classId).data.ownerUid == request.auth.uid;
+    }
+
+    function isClassTeacher(classId) {
+      return signedIn() && exists(/databases/$(database)/documents/classes/$(classId)/teachers/$(request.auth.uid));
+    }
+
+    function canReadBoard(classId, boardId) {
+      return signedIn() && boardDoc(classId, boardId).data.status in ['active', 'archived'];
+    }
+
+    match /users/{uid} {
+      allow get, create, update: if signedIn() && request.auth.uid == uid;
+      allow list, delete: if false;
+
+      match /operations/{operationId} {
+        allow read: if signedIn() && request.auth.uid == uid;
+        allow create, update: if signedIn() && request.auth.uid == uid
+          && request.resource.data.actorUid == request.auth.uid;
+        allow delete: if signedIn() && request.auth.uid == uid;
+      }
+    }
+
+    match /classes/{classId} {
+      allow get: if signedIn();
+      allow list: if false;
+      allow create: if signedIn()
+        && request.resource.data.ownerUid == request.auth.uid
+        && request.resource.data.status == 'active';
+      allow update: if isClassOwner(classId)
+        && request.resource.data.ownerUid == resource.data.ownerUid;
+      allow delete: if isClassOwner(classId);
+
+      match /teacherInvites/{inviteId} {
+        allow get: if signedIn();
+        allow list, create, delete: if isClassOwner(classId);
+        allow update: if isClassOwner(classId) || (
+          signedIn()
+          && resource.data.usedAt == null
+          && resource.data.expiresAt > request.time
+          && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['usedAt', 'usedBy'])
+          && request.resource.data.usedBy == request.auth.uid
+          && request.resource.data.usedAt == request.time
+        );
+      }
+
+      match /teachers/{teacherId} {
+        allow get, list: if signedIn() && (teacherId == request.auth.uid || isClassTeacher(classId));
+        allow create: if signedIn() && request.resource.data.uid == teacherId && (
+          isClassOwner(classId)
+          || (
+            teacherId == request.auth.uid
+            && request.resource.data.role == 'teacher'
+            && request.resource.data.inviteId is string
+            && getAfter(/databases/$(database)/documents/classes/$(classId)/teacherInvites/$(request.resource.data.inviteId)).data.usedBy == request.auth.uid
+          )
+          || (
+            teacherId == request.auth.uid
+            && request.resource.data.role == 'owner'
+            && getAfter(/databases/$(database)/documents/classes/$(classId)).data.ownerUid == request.auth.uid
+          )
+        );
+        allow update: if isClassOwner(classId) && teacherId != classDoc(classId).data.ownerUid;
+        allow delete: if isClassOwner(classId) && (
+          teacherId != classDoc(classId).data.ownerUid
+          || !existsAfter(/databases/$(database)/documents/classes/$(classId))
+        );
+      }
+
+      match /boards/{boardId} {
+        allow get, list: if signedIn();
+        allow create, update, delete: if isClassTeacher(classId);
+
+        match /sections/{sectionId} {
+          allow get, list: if canReadBoard(classId, boardId);
+          allow create, update, delete: if isClassTeacher(classId);
+        }
+
+        match /posts/{postId} {
+          allow get, list: if canReadBoard(classId, boardId);
+          allow create: if signedIn()
+            && boardDoc(classId, boardId).data.status == 'active'
+            && boardDoc(classId, boardId).data.allowPosting == true
+            && request.resource.data.authorUid == request.auth.uid
+            && request.resource.data.caption is string
+            && request.resource.data.caption.size() > 0
+            && request.resource.data.caption.size() <= 500
+            && request.resource.data.status == 'active'
+            && exists(/databases/$(database)/documents/classes/$(classId)/boards/$(boardId)/sections/$(request.resource.data.sectionId));
+          allow update: if isClassTeacher(classId);
+          allow delete: if isClassTeacher(classId)
+            || (signedIn() && resource.data.authorUid == request.auth.uid);
+        }
+
+        match /comments/{commentId} {
+          allow get, list: if canReadBoard(classId, boardId);
+          allow create: if signedIn()
+            && boardDoc(classId, boardId).data.status == 'active'
+            && boardDoc(classId, boardId).data.allowComments == true
+            && request.resource.data.authorUid == request.auth.uid
+            && request.resource.data.text is string
+            && request.resource.data.text.size() <= 500
+            && request.resource.data.postId is string
+            && exists(/databases/$(database)/documents/classes/$(classId)/boards/$(boardId)/posts/$(request.resource.data.postId));
+          allow update: if false;
+          allow delete: if isClassTeacher(classId);
+        }
+      }
+    }
+
+    // Dashboard membership discovery. The query must include where('uid', '==', request.auth.uid).
+    match /{path=**}/teachers/{teacherId} {
+      allow list: if signedIn() && resource.data.uid == request.auth.uid;
+    }
+  }
+}
