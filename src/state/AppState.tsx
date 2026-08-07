@@ -17,8 +17,17 @@ import {
 import { boards as seedBoards, classrooms as seedClasses, initialPosts } from "../demoData";
 import { firebaseConfigured } from "../firebase/config";
 import { auth } from "../firebase/client";
-import { createOwnedClass, deleteEmptyOwnedClass, subscribeTeacherWorkspace, upsertUserProfile } from "../firebase/workspace";
-import type { BoardPost, BoardSummary, Classroom, DemoUser } from "../types";
+import {
+  createOwnedClass,
+  deleteEmptyManagedClass,
+  listStaffCandidates,
+  loadClassWorkspace,
+  setTeacherApproval,
+  subscribeApplicationRole,
+  subscribeTeacherWorkspace,
+  upsertUserProfile,
+} from "../firebase/workspace";
+import type { AppRole, BoardPost, BoardSummary, Classroom, DemoUser, StaffCandidate } from "../types";
 
 interface NewPostInput {
   boardId: string;
@@ -33,6 +42,8 @@ interface AppStateValue {
   authError: string | null;
   dataLoading: boolean;
   dataError: string | null;
+  appRole: AppRole | null;
+  canCreateClass: boolean;
   classes: Classroom[];
   boards: BoardSummary[];
   posts: BoardPost[];
@@ -41,6 +52,9 @@ interface AppStateValue {
   getIdToken: () => Promise<string>;
   createClass: (input: { name: string; description: string }) => Promise<string>;
   deleteClass: (classId: string) => Promise<void>;
+  ensureClassLoaded: (classId: string) => Promise<void>;
+  loadStaffCandidates: () => Promise<StaffCandidate[]>;
+  setTeacherApproved: (candidate: StaffCandidate, approved: boolean) => Promise<void>;
   toggleBoardSetting: (
     boardId: string,
     setting: "allowPosting" | "allowComments",
@@ -107,6 +121,7 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
   const [authError, setAuthError] = useState<string | null>(null);
   const [dataLoading, setDataLoading] = useState(firebaseConfigured);
   const [dataError, setDataError] = useState<string | null>(null);
+  const [appRole, setAppRole] = useState<AppRole | null>(firebaseConfigured ? null : "owner");
   const [classes, setClasses] = useState(firebaseConfigured ? [] : seedClasses);
   const [boards, setBoards] = useState(firebaseConfigured ? [] : seedBoards);
   const [posts, setPosts] = useState(firebaseConfigured ? [] : initialPosts);
@@ -115,17 +130,21 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
     if (!auth) return;
 
     let stopWorkspace: () => void = () => {};
+    let stopRole: () => void = () => {};
     const stopAuth = onAuthStateChanged(
       auth,
       (firebaseUser) => {
         stopWorkspace();
-        setUser(firebaseUser ? toAppUser(firebaseUser) : null);
+        stopRole();
+        const appUser = firebaseUser ? toAppUser(firebaseUser) : null;
+        setUser(appUser);
         setAuthReady(true);
         if (firebaseUser) setAuthError(null);
         if (!firebaseUser) {
           setClasses([]);
           setBoards([]);
           setPosts([]);
+          setAppRole(null);
           setDataLoading(false);
           setDataError(null);
           return;
@@ -135,19 +154,34 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
         void upsertUserProfile(firebaseUser).catch((error) => {
           setDataError(error instanceof Error ? error.message : "PROFILE_SAVE_FAILED");
         });
-        stopWorkspace = subscribeTeacherWorkspace(
-          firebaseUser.uid,
-          (nextClasses, nextBoards) => {
-            setClasses(nextClasses);
-            setBoards(nextBoards);
+        stopRole = subscribeApplicationRole(appUser!, (role) => {
+          setAppRole(role);
+          stopWorkspace();
+          if (role === "student") {
+            setClasses([]);
+            setBoards([]);
             setDataLoading(false);
             setDataError(null);
-          },
-          (error) => {
-            setDataLoading(false);
-            setDataError(error.message);
-          },
-        );
+            return;
+          }
+          stopWorkspace = subscribeTeacherWorkspace(
+            firebaseUser.uid,
+            role,
+            (nextClasses, nextBoards) => {
+              setClasses(nextClasses);
+              setBoards(nextBoards);
+              setDataLoading(false);
+              setDataError(null);
+            },
+            (error) => {
+              setDataLoading(false);
+              setDataError(error.message);
+            },
+          );
+        }, (error) => {
+          setDataLoading(false);
+          setDataError(error.message);
+        });
       },
       (error) => {
         setAuthReady(true);
@@ -157,6 +191,7 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
 
     return () => {
       stopWorkspace();
+      stopRole();
       stopAuth();
     };
   }, []);
@@ -168,6 +203,8 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
       authError,
       dataLoading,
       dataError,
+      appRole,
+      canCreateClass: appRole === "owner" || appRole === "teacher",
       classes,
       boards,
       posts,
@@ -205,6 +242,7 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
       },
       createClass: async (input) => {
         if (!user) throw new Error("AUTH_REQUIRED");
+        if (appRole !== "owner" && appRole !== "teacher") throw new Error("TEACHER_APPROVAL_REQUIRED");
         setDataError(null);
         const classId = await createOwnedClass(user, input);
         setClasses((current) => current.some((item) => item.id === classId) ? current : [
@@ -214,6 +252,8 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
             name: input.name,
             description: input.description,
             role: "owner",
+            ownerUid: user.uid,
+            canManage: true,
             boardCount: 0,
             postCount: 0,
             accent: ["copper", "moss", "ink"][current.length % 3],
@@ -223,9 +263,35 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
       },
       deleteClass: async (classId) => {
         setDataError(null);
-        await deleteEmptyOwnedClass(classId);
+        await deleteEmptyManagedClass(classId);
         setClasses((current) => current.filter((item) => item.id !== classId));
         setBoards((current) => current.filter((item) => item.classId !== classId));
+      },
+      ensureClassLoaded: async (classId) => {
+        if (!user || !appRole || classes.some((item) => item.id === classId)) return;
+        setDataLoading(true);
+        try {
+          const result = await loadClassWorkspace(classId, user.uid, appRole);
+          if (!result) return;
+          setClasses((current) => current.some((item) => item.id === classId) ? current : [...current, result.classroom]);
+          setBoards((current) => [
+            ...current.filter((item) => item.classId !== classId),
+            ...result.boards,
+          ]);
+          setDataError(null);
+        } catch (error) {
+          setDataError(error instanceof Error ? error.message : "CLASS_LOAD_FAILED");
+        } finally {
+          setDataLoading(false);
+        }
+      },
+      loadStaffCandidates: async () => {
+        if (appRole !== "owner") throw new Error("OWNER_REQUIRED");
+        return listStaffCandidates();
+      },
+      setTeacherApproved: async (candidate, approved) => {
+        if (!user || appRole !== "owner") throw new Error("OWNER_REQUIRED");
+        await setTeacherApproval(candidate, approved, user.uid);
       },
       toggleBoardSetting: (boardId, setting) => {
         setBoards((current) =>
@@ -256,7 +322,7 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
         ]);
       },
     }),
-    [authError, authReady, boards, classes, dataError, dataLoading, posts, user],
+    [appRole, authError, authReady, boards, classes, dataError, dataLoading, posts, user],
   );
 
   return (

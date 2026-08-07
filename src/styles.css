@@ -231,6 +231,7 @@ h1, h2, h3 { font-family: "Manrope", sans-serif; letter-spacing: -0.035em; }
 .board-content { display: grid; gap: 4rem; }
 .photo-section { scroll-margin-top: 100px; }
 .photo-section-header { display: grid; grid-template-columns: 34px 1fr auto; align-items: center; gap: .6rem; padding-bottom: 1rem; border-bottom: 1px solid var(--line); margin-bottom: 1.1rem; }
+.photo-section-header.view-only { grid-template-columns: 1fr auto; }
 .photo-section-header p { margin: .2rem 0 0; color: var(--muted); font-size: .85rem; }
 .drag-handle { color: #9b9e99; }
 .section-count { color: var(--muted); font-size: .76rem; }
@@ -293,6 +294,20 @@ h1, h2, h3 { font-family: "Manrope", sans-serif; letter-spacing: -0.035em; }
 .muted-copy { color: var(--muted); line-height: 1.55; }
 .class-id-code { display: block; padding: .75rem; border-radius: 10px; background: #f0ede6; overflow-wrap: anywhere; }
 
+.student-entry-state { max-width: 720px; margin: clamp(4rem, 12vw, 9rem) auto; padding: clamp(2rem, 6vw, 4rem); border: 1px solid var(--line); border-radius: 24px; background: var(--paper); box-shadow: var(--shadow); text-align: center; }
+.student-entry-state h1 { margin-bottom: 1rem; font-size: clamp(2.2rem, 6vw, 4.5rem); }
+.student-entry-state p:not(.eyebrow) { color: var(--muted); font-size: 1.05rem; line-height: 1.6; }
+.student-entry-state .button { margin-top: 1rem; }
+.staff-hero { margin-bottom: 2rem; }
+.staff-search { min-height: 50px; margin-bottom: 1rem; padding: 0 .9rem; display: flex; align-items: center; gap: .65rem; border: 1px solid var(--line); border-radius: 14px; background: var(--paper); }
+.staff-search input { width: 100%; border: 0; outline: 0; background: transparent; }
+.staff-list { display: grid; gap: .7rem; }
+.staff-row { min-height: 78px; padding: .9rem 1rem; display: grid; grid-template-columns: auto minmax(0, 1fr) auto auto; align-items: center; gap: 1rem; border: 1px solid var(--line); border-radius: 15px; background: var(--paper); }
+.staff-copy { min-width: 0; display: grid; gap: .15rem; }
+.staff-copy span { overflow: hidden; color: var(--muted); font-size: .82rem; text-overflow: ellipsis; }
+.staff-row .role-pill { white-space: nowrap; color: #6d6f69; background: #eceae4; }
+.staff-row .role-pill.is-approved { color: var(--green); background: var(--green-soft); }
+
 .present-page { min-height: 100vh; padding: 1.4rem clamp(1rem,4vw,3rem) 3rem; color: white; background: #16382f; }
 .present-nav { max-width: 1440px; margin: 0 auto 1.5rem; display: flex; align-items: center; justify-content: space-between; }
 .present-nav a { display: inline-flex; align-items: center; gap: .5rem; color: rgba(255,255,255,.75); font-weight: 700; }
@@ -351,6 +366,8 @@ h1, h2, h3 { font-family: "Manrope", sans-serif; letter-spacing: -0.035em; }
   .present-copy h1 { font-size: clamp(3rem,17vw,5rem); }
   .present-stats { gap: 1.2rem; }
   .present-stats strong { font-size: 1.5rem; }
+  .staff-row { grid-template-columns: auto 1fr; }
+  .staff-row .role-pill, .staff-row .button { grid-column: 2; justify-self: start; }
 }
 
 @media (max-width: 390px) {

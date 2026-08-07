@@ -4,7 +4,7 @@ import { firebaseConfigured } from "../firebase/config";
 import { useAppState } from "../state/AppState";
 
 export function AppHeader() {
-  const { user, authReady, authError, signIn, signOut } = useAppState();
+  const { user, appRole, authReady, authError, signIn, signOut } = useAppState();
 
   return (
     <>
@@ -22,14 +22,16 @@ export function AppHeader() {
           {!authReady && <span className="demo-pill">Checking sign-in...</span>}
           {authReady && user ? (
             <>
-              <button className="icon-button" aria-label="Settings">
-                <Settings size={18} />
-              </button>
+              {appRole === "owner" && (
+                <Link className="icon-button" to="/owner/teachers" aria-label="Manage teachers">
+                  <Settings size={18} />
+                </Link>
+              )}
               <div className="user-chip">
                 <span className="avatar avatar-warm">{user.initials}</span>
                 <span className="user-copy">
                   <strong>{user.displayName}</strong>
-                  <small>Teacher</small>
+                  <small>{appRole === "owner" ? "Application owner" : appRole === "teacher" ? "Teacher" : "Student"}</small>
                 </span>
               </div>
               <button className="icon-button" onClick={() => void signOut()} aria-label="Sign out">

@@ -1,15 +1,28 @@
 import { ArrowLeft, BarChart3, MoreHorizontal, Plus, Presentation } from "lucide-react";
+import { useEffect, useRef, useState } from "react";
 import { Link, useParams } from "react-router-dom";
 import { useAppState } from "../state/AppState";
 
 export function ClassPage() {
   const { classId = "" } = useParams();
-  const { classes, boards, dataLoading, dataError } = useAppState();
+  const { user, appRole, classes, boards, dataLoading, dataError, ensureClassLoaded } = useAppState();
+  const [lookupComplete, setLookupComplete] = useState(false);
+  const requestedClass = useRef("");
   const classroom = classes.find((item) => item.id === classId);
   const classBoards = boards.filter((board) => board.classId === classId);
 
-  if (!classroom && dataLoading) return <main className="page-shell"><div className="workspace-empty">Loading class...</div></main>;
-  if (!classroom && dataError) return <main className="page-shell"><div className="probe-error" role="alert"><strong>Class discovery is unavailable.</strong> Return to the dashboard and create the required Firestore index.</div><Link to="/teacher">Return to classes</Link></main>;
+  useEffect(() => {
+    if (!user || !appRole || classroom || requestedClass.current === classId) return;
+    requestedClass.current = classId;
+    let active = true;
+    void ensureClassLoaded(classId).finally(() => {
+      if (active) setLookupComplete(true);
+    });
+    return () => { active = false; };
+  }, [appRole, classId, classroom, ensureClassLoaded, user]);
+
+  if (!classroom && (dataLoading || !lookupComplete || requestedClass.current !== classId)) return <main className="page-shell"><div className="workspace-empty">Loading class...</div></main>;
+  if (!classroom && dataError) return <main className="page-shell"><div className="probe-error" role="alert"><strong>Class could not load.</strong> {dataError}</div><Link to="/teacher">Return to classes</Link></main>;
   if (!classroom) return <NotFound />;
 
   return (
@@ -21,10 +34,12 @@ export function ClassPage() {
           <h1>{classroom.name}</h1>
           <p>{classroom.description}</p>
         </div>
-        <div className="hero-actions">
-          <button className="button button-secondary"><BarChart3 size={18} /> Class stats</button>
-          <button className="button button-primary"><Plus size={18} /> New board</button>
-        </div>
+        {classroom.canManage && (
+          <div className="hero-actions">
+            <button className="button button-secondary"><BarChart3 size={18} /> Class stats</button>
+            <button className="button button-primary"><Plus size={18} /> New board</button>
+          </div>
+        )}
       </section>
 
       <section className="section-block">
@@ -48,7 +63,7 @@ export function ClassPage() {
                     <h3>{board.title}</h3>
                     <p>{board.description}</p>
                   </div>
-                  <button className="icon-button" aria-label={`More actions for ${board.title}`}><MoreHorizontal /></button>
+                  {classroom.canManage && <button className="icon-button" aria-label={`More actions for ${board.title}`}><MoreHorizontal /></button>}
                 </div>
                 <div className="board-stats">
                   <span><strong>{board.postCount}</strong> posts</span>
@@ -58,7 +73,7 @@ export function ClassPage() {
                 </div>
                 <div className="board-actions">
                   <Link className="button button-secondary" to={`/c/${classId}/b/${board.id}`}>Open board</Link>
-                  {board.status === "active" && (
+                  {classroom.canManage && board.status === "active" && (
                     <Link className="button button-primary" to={`/c/${classId}/b/${board.id}/present`}>
                       <Presentation size={18} /> Present
                     </Link>

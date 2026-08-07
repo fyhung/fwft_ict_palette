@@ -5,6 +5,7 @@ import { ClassPage } from "./pages/ClassPage";
 import { MediaProbePage } from "./pages/MediaProbePage";
 import { PresentPage } from "./pages/PresentPage";
 import { TeacherDashboardPage } from "./pages/TeacherDashboardPage";
+import { TeacherManagementPage } from "./pages/TeacherManagementPage";
 import { AppStateProvider } from "./state/AppState";
 
 function AppRoutes() {
@@ -16,6 +17,7 @@ function AppRoutes() {
       {!presentationMode && <AppHeader />}
       <Routes>
         <Route path="/teacher" element={<TeacherDashboardPage />} />
+        <Route path="/owner/teachers" element={<TeacherManagementPage />} />
         <Route path="/setup/media" element={<MediaProbePage />} />
         <Route path="/c/:classId" element={<ClassPage />} />
         <Route path="/c/:classId/b/:boardId" element={<BoardPage />} />

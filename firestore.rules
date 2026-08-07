@@ -13,12 +13,27 @@ service cloud.firestore {
       return get(/databases/$(database)/documents/classes/$(classId)/boards/$(boardId));
     }
 
+    function isAppOwner() {
+      return signedIn()
+        && request.auth.token.keys().hasAll(['email', 'email_verified'])
+        && request.auth.token.email_verified == true
+        && request.auth.token.email == 'fyhung@twghfwfts.edu.hk';
+    }
+
+    function isApprovedTeacher() {
+      return isAppOwner() || (
+        signedIn()
+        && exists(/databases/$(database)/documents/staff/$(request.auth.uid))
+        && get(/databases/$(database)/documents/staff/$(request.auth.uid)).data.role == 'teacher'
+      );
+    }
+
     function isClassOwner(classId) {
       return signedIn() && classDoc(classId).data.ownerUid == request.auth.uid;
     }
 
-    function isClassTeacher(classId) {
-      return signedIn() && exists(/databases/$(database)/documents/classes/$(classId)/teachers/$(request.auth.uid));
+    function canManageClass(classId) {
+      return isAppOwner() || (isApprovedTeacher() && isClassOwner(classId));
     }
 
     function canReadBoard(classId, boardId) {
@@ -27,7 +42,8 @@ service cloud.firestore {
 
     match /users/{uid} {
       allow get, create, update: if signedIn() && request.auth.uid == uid;
-      allow list, delete: if false;
+      allow list: if isAppOwner();
+      allow delete: if false;
 
       match /operations/{operationId} {
         allow read: if signedIn() && request.auth.uid == uid;
@@ -37,59 +53,41 @@ service cloud.firestore {
       }
     }
 
+    match /staff/{uid} {
+      allow get: if signedIn() && (request.auth.uid == uid || isAppOwner());
+      allow list, create, update, delete: if isAppOwner();
+    }
+
     match /classes/{classId} {
       allow get: if signedIn();
-      allow list: if false;
-      allow create: if signedIn()
+      allow list: if isApprovedTeacher();
+      allow create: if isApprovedTeacher()
         && request.resource.data.ownerUid == request.auth.uid
         && request.resource.data.status == 'active';
-      allow update: if isClassOwner(classId)
+      allow update: if canManageClass(classId)
         && request.resource.data.ownerUid == resource.data.ownerUid;
-      allow delete: if isClassOwner(classId);
+      allow delete: if canManageClass(classId);
 
       match /teacherInvites/{inviteId} {
-        allow get: if signedIn();
-        allow list, create, delete: if isClassOwner(classId);
-        allow update: if isClassOwner(classId) || (
-          signedIn()
-          && resource.data.usedAt == null
-          && resource.data.expiresAt > request.time
-          && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['usedAt', 'usedBy'])
-          && request.resource.data.usedBy == request.auth.uid
-          && request.resource.data.usedAt == request.time
-        );
+        allow read, write: if false;
       }
 
+      // Retained only so existing class membership records can be cleaned up.
+      // The simplified model uses /staff and classes/{classId}.ownerUid.
       match /teachers/{teacherId} {
-        allow get, list: if signedIn() && (teacherId == request.auth.uid || isClassTeacher(classId));
-        allow create: if signedIn() && request.resource.data.uid == teacherId && (
-          isClassOwner(classId)
-          || (
-            teacherId == request.auth.uid
-            && request.resource.data.role == 'teacher'
-            && request.resource.data.inviteId is string
-            && getAfter(/databases/$(database)/documents/classes/$(classId)/teacherInvites/$(request.resource.data.inviteId)).data.usedBy == request.auth.uid
-          )
-          || (
-            teacherId == request.auth.uid
-            && request.resource.data.role == 'owner'
-            && getAfter(/databases/$(database)/documents/classes/$(classId)).data.ownerUid == request.auth.uid
-          )
-        );
-        allow update: if isClassOwner(classId) && teacherId != classDoc(classId).data.ownerUid;
-        allow delete: if isClassOwner(classId) && (
-          teacherId != classDoc(classId).data.ownerUid
-          || !existsAfter(/databases/$(database)/documents/classes/$(classId))
-        );
+        allow read: if isApprovedTeacher();
+        allow create, update: if false;
+        allow delete: if canManageClass(classId)
+          && !existsAfter(/databases/$(database)/documents/classes/$(classId));
       }
 
       match /boards/{boardId} {
         allow get, list: if signedIn();
-        allow create, update, delete: if isClassTeacher(classId);
+        allow create, update, delete: if canManageClass(classId);
 
         match /sections/{sectionId} {
           allow get, list: if canReadBoard(classId, boardId);
-          allow create, update, delete: if isClassTeacher(classId);
+          allow create, update, delete: if canManageClass(classId);
         }
 
         match /posts/{postId} {
@@ -103,8 +101,8 @@ service cloud.firestore {
             && request.resource.data.caption.size() <= 500
             && request.resource.data.status == 'active'
             && exists(/databases/$(database)/documents/classes/$(classId)/boards/$(boardId)/sections/$(request.resource.data.sectionId));
-          allow update: if isClassTeacher(classId);
-          allow delete: if isClassTeacher(classId)
+          allow update: if canManageClass(classId);
+          allow delete: if canManageClass(classId)
             || (signedIn() && resource.data.authorUid == request.auth.uid);
         }
 
@@ -119,14 +117,9 @@ service cloud.firestore {
             && request.resource.data.postId is string
             && exists(/databases/$(database)/documents/classes/$(classId)/boards/$(boardId)/posts/$(request.resource.data.postId));
           allow update: if false;
-          allow delete: if isClassTeacher(classId);
+          allow delete: if canManageClass(classId);
         }
       }
-    }
-
-    // Dashboard membership discovery. The query must include where('uid', '==', request.auth.uid).
-    match /{path=**}/teachers/{teacherId} {
-      allow list: if signedIn() && resource.data.uid == request.auth.uid;
     }
   }
 }

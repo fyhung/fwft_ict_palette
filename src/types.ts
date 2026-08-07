@@ -1,4 +1,5 @@
-export type ClassRole = "owner" | "teacher";
+export type AppRole = "owner" | "teacher" | "student";
+export type ClassRole = "app owner" | "owner" | "view only";
 export type BoardStatus = "active" | "archived";
 
 export interface Classroom {
@@ -6,6 +7,8 @@ export interface Classroom {
   name: string;
   description: string;
   role: ClassRole;
+  ownerUid?: string;
+  canManage?: boolean;
   boardCount: number;
   postCount: number;
   accent: string;
@@ -52,4 +55,12 @@ export interface DemoUser {
   email: string;
   initials: string;
   photoURL?: string;
+}
+
+export interface StaffCandidate {
+  uid: string;
+  displayName: string;
+  email: string;
+  photoURL?: string;
+  approved: boolean;
 }

@@ -1,4 +1,4 @@
-import { ArrowRight, Plus, Trash2, UsersRound } from "lucide-react";
+import { ArrowRight, Plus, ShieldCheck, Trash2, UsersRound } from "lucide-react";
 import { useState } from "react";
 import { Link } from "react-router-dom";
 import { NewClassDialog } from "../components/NewClassDialog";
@@ -7,7 +7,7 @@ import { useAppState } from "../state/AppState";
 import type { Classroom } from "../types";
 
 export function TeacherDashboardPage() {
-  const { user, classes, boards, dataLoading, dataError } = useAppState();
+  const { user, appRole, canCreateClass, classes, boards, dataLoading, dataError } = useAppState();
   const [newClassOpen, setNewClassOpen] = useState(false);
   const [manageClasses, setManageClasses] = useState(false);
   const [classToDelete, setClassToDelete] = useState<Classroom | null>(null);
@@ -18,7 +18,18 @@ export function TeacherDashboardPage() {
     day: "numeric",
     month: "long",
   }).format(new Date());
-  const indexUrl = dataError?.match(/https:\/\/\S+/)?.[0];
+
+  if (user && appRole === "student") {
+    return (
+      <main className="page-shell">
+        <section className="student-entry-state">
+          <p className="eyebrow">Student account</p>
+          <h1>Open your class board link.</h1>
+          <p>Scan the QR code or use the link shared by your teacher. Student accounts cannot browse or create classes.</p>
+        </section>
+      </main>
+    );
+  }
 
   return (
     <main className="page-shell">
@@ -28,9 +39,14 @@ export function TeacherDashboardPage() {
           <h1>Good afternoon, {firstName}.</h1>
           <p className="hero-copy">Choose a class, open today&apos;s board and put the QR code on screen.</p>
         </div>
-        <button className="button button-primary" onClick={() => setNewClassOpen(true)} disabled={!user}>
-          <Plus size={18} /> New class
-        </button>
+        <div className="hero-actions">
+          {appRole === "owner" && <Link className="button button-secondary" to="/owner/teachers"><ShieldCheck size={18} /> Manage teachers</Link>}
+          {canCreateClass && (
+            <button className="button button-primary" onClick={() => setNewClassOpen(true)} disabled={!user}>
+              <Plus size={18} /> New class
+            </button>
+          )}
+        </div>
       </section>
 
       <section className="summary-strip" aria-label="Classroom overview">
@@ -42,15 +58,15 @@ export function TeacherDashboardPage() {
 
       <section className="section-block">
         <div className="section-heading">
-          <div><p className="eyebrow">Your teaching spaces</p><h2>Classes</h2></div>
-          <button className="text-button" onClick={() => setManageClasses((current) => !current)}>{manageClasses ? "Done" : "Manage classes"}</button>
+          <div><p className="eyebrow">School teaching spaces</p><h2>All classes</h2></div>
+          {(appRole === "owner" || classes.some((item) => item.canManage)) && (
+            <button className="text-button" onClick={() => setManageClasses((current) => !current)}>{manageClasses ? "Done" : "Manage classes"}</button>
+          )}
         </div>
         {dataError && (
           <div className="probe-error firestore-error" role="alert">
-            <div><strong>Firestore could not load the class membership index.</strong></div>
-            {indexUrl ? (
-              <a className="button button-secondary" href={indexUrl} target="_blank" rel="noreferrer">Create required Firestore index</a>
-            ) : <span>{dataError}</span>}
+            <div><strong>Firestore could not load the classes.</strong></div>
+            <span>{dataError}</span>
           </div>
         )}
         {dataLoading && <div className="workspace-empty">Loading your Firestore classes...</div>}
@@ -78,7 +94,7 @@ export function TeacherDashboardPage() {
                   </div>
                 </div>
               </Link>
-              {manageClasses && classroom.role === "owner" && (
+              {manageClasses && classroom.canManage && (
                 <button className="class-delete-button" onClick={() => setClassToDelete(classroom)} aria-label={`Delete ${classroom.name}`}>
                   <Trash2 size={17} /> Delete
                 </button>
