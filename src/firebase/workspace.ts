@@ -12,7 +12,7 @@ import {
   type DocumentData,
   type QueryDocumentSnapshot,
 } from "firebase/firestore";
-import type { AppRole, BoardSummary, Classroom, DemoUser, StaffCandidate } from "../types";
+import type { AppRole, BoardSection, BoardSummary, Classroom, DemoUser, StaffCandidate } from "../types";
 import { db } from "./client";
 
 export const APP_OWNER_EMAIL = "fyhung@twghfwfts.edu.hk";
@@ -65,6 +65,17 @@ function boardFromSnapshot(classId: string, snapshot: QueryDocumentSnapshot<Docu
   };
 }
 
+function sectionFromSnapshot(boardId: string, snapshot: QueryDocumentSnapshot<DocumentData>): BoardSection {
+  const data = snapshot.data();
+  return {
+    id: snapshot.id,
+    boardId,
+    title: String(data.title || "Untitled section"),
+    note: String(data.note || ""),
+    sortOrder: Number(data.sortOrder || 0),
+  };
+}
+
 function classroomFromData(
   id: string,
   data: DocumentData,
@@ -91,7 +102,7 @@ function classroomFromData(
 export function subscribeTeacherWorkspace(
   uid: string,
   appRole: Extract<AppRole, "owner" | "teacher">,
-  onData: (classes: Classroom[], boards: BoardSummary[]) => void,
+  onData: (classes: Classroom[], boards: BoardSummary[], sections: BoardSection[]) => void,
   onError: (error: Error) => void,
 ) {
   if (!db) throw new Error("FIRESTORE_NOT_CONFIGURED");
@@ -100,13 +111,22 @@ export function subscribeTeacherWorkspace(
     try {
       const results = await Promise.all(snapshot.docs.map(async (classSnapshot, index) => {
         const boardSnapshots = await getDocs(collection(classSnapshot.ref, "boards"));
-        const classBoards = boardSnapshots.docs.map((item) => boardFromSnapshot(classSnapshot.id, item));
+        const boardResults = await Promise.all(boardSnapshots.docs.map(async (item) => ({
+          board: boardFromSnapshot(classSnapshot.id, item),
+          sections: (await getDocs(collection(item.ref, "sections"))).docs.map((section) => sectionFromSnapshot(item.id, section)),
+        })));
+        const classBoards = boardResults.map((item) => item.board);
         return {
           classroom: classroomFromData(classSnapshot.id, classSnapshot.data(), index, uid, appRole, classBoards),
           boards: classBoards,
+          sections: boardResults.flatMap((item) => item.sections),
         };
       }));
-      onData(results.map((item) => item.classroom), results.flatMap((item) => item.boards));
+      onData(
+        results.map((item) => item.classroom),
+        results.flatMap((item) => item.boards),
+        results.flatMap((item) => item.sections),
+      );
     } catch (error) {
       onError(error instanceof Error ? error : new Error("WORKSPACE_LOAD_FAILED"));
     }
@@ -121,10 +141,15 @@ export async function loadClassWorkspace(classId: string, uid: string, appRole: 
     getDocs(collection(classReference, "boards")),
   ]);
   if (!classSnapshot.exists()) return null;
-  const classBoards = boardSnapshots.docs.map((item) => boardFromSnapshot(classId, item));
+  const boardResults = await Promise.all(boardSnapshots.docs.map(async (item) => ({
+    board: boardFromSnapshot(classId, item),
+    sections: (await getDocs(collection(item.ref, "sections"))).docs.map((section) => sectionFromSnapshot(item.id, section)),
+  })));
+  const classBoards = boardResults.map((item) => item.board);
   return {
     classroom: classroomFromData(classId, classSnapshot.data(), 0, uid, appRole, classBoards),
     boards: classBoards,
+    sections: boardResults.flatMap((item) => item.sections),
   };
 }
 
@@ -143,6 +168,62 @@ export async function createOwnedClass(
     updatedAt: serverTimestamp(),
   });
   return classReference.id;
+}
+
+export async function createClassBoard(
+  classId: string,
+  createdBy: string,
+  input: { title: string; description: string },
+): Promise<{ board: BoardSummary; section: BoardSection }> {
+  if (!db) throw new Error("FIRESTORE_NOT_CONFIGURED");
+  const boardReference = doc(collection(db, "classes", classId, "boards"));
+  const sectionReference = doc(collection(boardReference, "sections"));
+  const batch = writeBatch(db);
+
+  batch.set(boardReference, {
+    title: input.title,
+    description: input.description,
+    allowPosting: true,
+    allowComments: true,
+    status: "active",
+    createdBy,
+    postCount: 0,
+    commentCount: 0,
+    contributorCount: 0,
+    createdAt: serverTimestamp(),
+    updatedAt: serverTimestamp(),
+  });
+  batch.set(sectionReference, {
+    title: "Section 1",
+    note: "",
+    sortOrder: 0,
+    createdAt: serverTimestamp(),
+    updatedAt: serverTimestamp(),
+  });
+  await batch.commit();
+
+  return {
+    board: {
+      id: boardReference.id,
+      classId,
+      title: input.title,
+      description: input.description,
+      status: "active",
+      allowPosting: true,
+      allowComments: true,
+      postCount: 0,
+      commentCount: 0,
+      contributorCount: 0,
+      updatedLabel: "Created just now",
+    },
+    section: {
+      id: sectionReference.id,
+      boardId: boardReference.id,
+      title: "Section 1",
+      note: "",
+      sortOrder: 0,
+    },
+  };
 }
 
 export async function deleteEmptyManagedClass(classId: string) {

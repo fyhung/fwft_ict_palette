@@ -109,18 +109,21 @@ export const boards: BoardSummary[] = [
 export const sections: BoardSection[] = [
   {
     id: "push-pull",
+    boardId: "forces-in-action",
     title: "Push & pull",
     note: "Look for contact forces in everyday objects.",
     sortOrder: 0,
   },
   {
     id: "friction",
+    boardId: "forces-in-action",
     title: "Friction",
     note: "Show where surfaces resist movement.",
     sortOrder: 1,
   },
   {
     id: "action-reaction",
+    boardId: "forces-in-action",
     title: "Action & reaction",
     note: "Pairs of forces acting in opposite directions.",
     sortOrder: 2,

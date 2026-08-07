@@ -15,17 +15,12 @@ service cloud.firestore {
 
     function isAppOwner() {
       return signedIn()
-        && request.auth.token.keys().hasAll(['email', 'email_verified'])
-        && request.auth.token.email_verified == true
-        && request.auth.token.email == 'fyhung@twghfwfts.edu.hk';
+        && request.auth.token.get('email', '') == 'fyhung@twghfwfts.edu.hk';
     }
 
     function isApprovedTeacher() {
-      return isAppOwner() || (
-        signedIn()
-        && exists(/databases/$(database)/documents/staff/$(request.auth.uid))
-        && get(/databases/$(database)/documents/staff/$(request.auth.uid)).data.role == 'teacher'
-      );
+      return isAppOwner() || (signedIn()
+        && exists(/databases/$(database)/documents/staff/$(request.auth.uid)));
     }
 
     function isClassOwner(classId) {
@@ -55,7 +50,10 @@ service cloud.firestore {
 
     match /staff/{uid} {
       allow get: if signedIn() && (request.auth.uid == uid || isAppOwner());
-      allow list, create, update, delete: if isAppOwner();
+      allow list, delete: if isAppOwner();
+      allow create, update: if isAppOwner()
+        && request.resource.data.uid == uid
+        && request.resource.data.role == 'teacher';
     }
 
     match /classes/{classId} {
@@ -83,7 +81,17 @@ service cloud.firestore {
 
       match /boards/{boardId} {
         allow get, list: if signedIn();
-        allow create, update, delete: if canManageClass(classId);
+        allow create: if canManageClass(classId)
+          && request.resource.data.title is string
+          && request.resource.data.title.size() > 0
+          && request.resource.data.title.size() <= 100
+          && request.resource.data.description is string
+          && request.resource.data.description.size() <= 500
+          && request.resource.data.status == 'active'
+          && request.resource.data.allowPosting == true
+          && request.resource.data.allowComments == true
+          && request.resource.data.createdBy == request.auth.uid;
+        allow update, delete: if canManageClass(classId);
 
         match /sections/{sectionId} {
           allow get, list: if canReadBoard(classId, boardId);

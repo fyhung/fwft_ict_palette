@@ -30,6 +30,7 @@ export interface BoardSummary {
 
 export interface BoardSection {
   id: string;
+  boardId: string;
   title: string;
   note: string;
   sortOrder: number;

@@ -12,16 +12,16 @@ import { useEffect, useRef, useState } from "react";
 import { Link, useParams } from "react-router-dom";
 import { PostCard } from "../components/PostCard";
 import { PostDialog } from "../components/PostDialog";
-import { sections } from "../demoData";
 import { useAppState } from "../state/AppState";
 
 export function BoardPage() {
   const { classId = "", boardId = "" } = useParams();
-  const { appRole, classes, boards, posts, toggleBoardSetting, user, signIn, ensureClassLoaded } = useAppState();
+  const { appRole, classes, boards, sections, posts, toggleBoardSetting, user, signIn, ensureClassLoaded } = useAppState();
   const board = boards.find((item) => item.id === boardId);
   const classroom = classes.find((item) => item.id === classId);
   const [dialogOpen, setDialogOpen] = useState(false);
   const requestedClass = useRef("");
+  const boardSections = sections.filter((section) => section.boardId === boardId).sort((a, b) => a.sortOrder - b.sortOrder);
 
   useEffect(() => {
     if (!user || !appRole || classroom || requestedClass.current === classId) return;
@@ -71,7 +71,7 @@ export function BoardPage() {
       </section>
 
       <div className="board-content page-shell">
-        {sections.map((section) => {
+        {boardSections.map((section) => {
           const sectionPosts = posts.filter((post) => post.boardId === boardId && post.sectionId === section.id);
           return (
             <section className="photo-section" key={section.id}>
@@ -88,6 +88,7 @@ export function BoardPage() {
             </section>
           );
         })}
+        {boardSections.length === 0 && <div className="empty-section">This board has no sections yet.</div>}
       </div>
 
       <button className="floating-post" onClick={openPostDialog} disabled={!board.allowPosting}>

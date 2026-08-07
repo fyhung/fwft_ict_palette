@@ -1,12 +1,14 @@
 import { ArrowLeft, BarChart3, MoreHorizontal, Plus, Presentation } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import { Link, useParams } from "react-router-dom";
+import { NewBoardDialog } from "../components/NewBoardDialog";
 import { useAppState } from "../state/AppState";
 
 export function ClassPage() {
   const { classId = "" } = useParams();
   const { user, appRole, classes, boards, dataLoading, dataError, ensureClassLoaded } = useAppState();
   const [lookupComplete, setLookupComplete] = useState(false);
+  const [newBoardOpen, setNewBoardOpen] = useState(false);
   const requestedClass = useRef("");
   const classroom = classes.find((item) => item.id === classId);
   const classBoards = boards.filter((board) => board.classId === classId);
@@ -37,7 +39,7 @@ export function ClassPage() {
         {classroom.canManage && (
           <div className="hero-actions">
             <button className="button button-secondary"><BarChart3 size={18} /> Class stats</button>
-            <button className="button button-primary"><Plus size={18} /> New board</button>
+            <button className="button button-primary" onClick={() => setNewBoardOpen(true)}><Plus size={18} /> New board</button>
           </div>
         )}
       </section>
@@ -82,8 +84,10 @@ export function ClassPage() {
               </div>
             </article>
           ))}
+          {classBoards.length === 0 && <div className="workspace-empty"><h3>No boards yet</h3><p>Create the first lesson board for this class.</p></div>}
         </div>
       </section>
+      <NewBoardDialog classId={classId} open={newBoardOpen} onClose={() => setNewBoardOpen(false)} />
     </main>
   );
 }

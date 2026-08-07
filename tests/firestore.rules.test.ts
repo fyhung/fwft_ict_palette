@@ -52,8 +52,8 @@ function legacyTeacherRef(db: Firestore, uid: string) {
   return doc(db, "classes", classId, "teachers", uid);
 }
 
-function boardRef(db: Firestore) {
-  return doc(db, "classes", classId, "boards", boardId);
+function boardRef(db: Firestore, id = boardId) {
+  return doc(db, "classes", classId, "boards", id);
 }
 
 function sectionRef(db: Firestore, id = sectionId) {
@@ -271,6 +271,51 @@ describe("class creation and discovery", () => {
 });
 
 describe("class management boundaries", () => {
+  test("class owner can atomically create a board with its default section", async () => {
+    const db = env().authenticatedContext("class-owner").firestore();
+    const newBoard = boardRef(db, "board-b");
+    const defaultSection = doc(newBoard, "sections", "section-default");
+    const batch = writeBatch(db);
+    batch.set(newBoard, {
+      title: "New lesson",
+      description: "Photograph evidence.",
+      allowPosting: true,
+      allowComments: true,
+      status: "active",
+      createdBy: "class-owner",
+      postCount: 0,
+      commentCount: 0,
+      contributorCount: 0,
+      createdAt: serverTimestamp(),
+      updatedAt: serverTimestamp(),
+    });
+    batch.set(defaultSection, {
+      title: "Section 1",
+      note: "",
+      sortOrder: 0,
+      createdAt: serverTimestamp(),
+      updatedAt: serverTimestamp(),
+    });
+    await assertSucceeds(batch.commit());
+  });
+
+  test("approved teacher cannot create a board in another teacher's class", async () => {
+    const db = env().authenticatedContext("teacher").firestore();
+    await assertFails(setDoc(boardRef(db, "board-b"), {
+      title: "Unauthorized lesson",
+      description: "",
+      allowPosting: true,
+      allowComments: true,
+      status: "active",
+      createdBy: "teacher",
+      postCount: 0,
+      commentCount: 0,
+      contributorCount: 0,
+      createdAt: serverTimestamp(),
+      updatedAt: serverTimestamp(),
+    }));
+  });
+
   test("class owner can manage boards, sections, posts and comments", async () => {
     const db = env().authenticatedContext("class-owner").firestore();
     await assertSucceeds(updateDoc(boardRef(db), { allowPosting: false }));

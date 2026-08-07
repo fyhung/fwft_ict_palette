@@ -1,6 +1,5 @@
 import { ImagePlus, X } from "lucide-react";
 import { type FormEvent, useEffect, useState } from "react";
-import { sections } from "../demoData";
 import { useAppState } from "../state/AppState";
 
 interface PostDialogProps {
@@ -10,20 +9,27 @@ interface PostDialogProps {
 }
 
 export function PostDialog({ boardId, open, onClose }: PostDialogProps) {
-  const { addPost } = useAppState();
+  const { addPost, sections } = useAppState();
+  const availableSections = sections.filter((section) => section.boardId === boardId).sort((a, b) => a.sortOrder - b.sortOrder);
   const [caption, setCaption] = useState("");
-  const [sectionId, setSectionId] = useState(sections[0].id);
+  const [sectionId, setSectionId] = useState("");
   const [preview, setPreview] = useState<string>();
 
   useEffect(() => () => {
     if (preview) URL.revokeObjectURL(preview);
   }, [preview]);
 
+  useEffect(() => {
+    if (!availableSections.some((section) => section.id === sectionId)) {
+      setSectionId(availableSections[0]?.id || "");
+    }
+  }, [availableSections, sectionId]);
+
   if (!open) return null;
 
   const submit = (event: FormEvent) => {
     event.preventDefault();
-    if (!caption.trim() || !preview) return;
+    if (!caption.trim() || !preview || !sectionId) return;
     addPost({ boardId, sectionId, caption: caption.trim(), imageUrl: preview });
     setCaption("");
     setPreview(undefined);
@@ -83,7 +89,7 @@ export function PostDialog({ boardId, open, onClose }: PostDialogProps) {
           <label className="field">
             <span>Section</span>
             <select value={sectionId} onChange={(event) => setSectionId(event.target.value)}>
-              {sections.map((section) => (
+              {availableSections.map((section) => (
                 <option key={section.id} value={section.id}>{section.title}</option>
               ))}
             </select>

@@ -14,11 +14,12 @@ import {
   signOut as firebaseSignOut,
   type User,
 } from "firebase/auth";
-import { boards as seedBoards, classrooms as seedClasses, initialPosts } from "../demoData";
+import { boards as seedBoards, classrooms as seedClasses, initialPosts, sections as seedSections } from "../demoData";
 import { firebaseConfigured } from "../firebase/config";
 import { auth } from "../firebase/client";
 import {
   createOwnedClass,
+  createClassBoard,
   deleteEmptyManagedClass,
   listStaffCandidates,
   loadClassWorkspace,
@@ -27,7 +28,7 @@ import {
   subscribeTeacherWorkspace,
   upsertUserProfile,
 } from "../firebase/workspace";
-import type { AppRole, BoardPost, BoardSummary, Classroom, DemoUser, StaffCandidate } from "../types";
+import type { AppRole, BoardPost, BoardSection, BoardSummary, Classroom, DemoUser, StaffCandidate } from "../types";
 
 interface NewPostInput {
   boardId: string;
@@ -46,11 +47,13 @@ interface AppStateValue {
   canCreateClass: boolean;
   classes: Classroom[];
   boards: BoardSummary[];
+  sections: BoardSection[];
   posts: BoardPost[];
   signIn: () => Promise<void>;
   signOut: () => Promise<void>;
   getIdToken: () => Promise<string>;
   createClass: (input: { name: string; description: string }) => Promise<string>;
+  createBoard: (classId: string, input: { title: string; description: string }) => Promise<string>;
   deleteClass: (classId: string) => Promise<void>;
   ensureClassLoaded: (classId: string) => Promise<void>;
   loadStaffCandidates: () => Promise<StaffCandidate[]>;
@@ -124,6 +127,7 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
   const [appRole, setAppRole] = useState<AppRole | null>(firebaseConfigured ? null : "owner");
   const [classes, setClasses] = useState(firebaseConfigured ? [] : seedClasses);
   const [boards, setBoards] = useState(firebaseConfigured ? [] : seedBoards);
+  const [sections, setSections] = useState(firebaseConfigured ? [] : seedSections);
   const [posts, setPosts] = useState(firebaseConfigured ? [] : initialPosts);
 
   useEffect(() => {
@@ -143,6 +147,7 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
         if (!firebaseUser) {
           setClasses([]);
           setBoards([]);
+          setSections([]);
           setPosts([]);
           setAppRole(null);
           setDataLoading(false);
@@ -160,6 +165,7 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
           if (role === "student") {
             setClasses([]);
             setBoards([]);
+            setSections([]);
             setDataLoading(false);
             setDataError(null);
             return;
@@ -167,9 +173,10 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
           stopWorkspace = subscribeTeacherWorkspace(
             firebaseUser.uid,
             role,
-            (nextClasses, nextBoards) => {
+            (nextClasses, nextBoards, nextSections) => {
               setClasses(nextClasses);
               setBoards(nextBoards);
+              setSections(nextSections);
               setDataLoading(false);
               setDataError(null);
             },
@@ -207,6 +214,7 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
       canCreateClass: appRole === "owner" || appRole === "teacher",
       classes,
       boards,
+      sections,
       posts,
       signIn: async () => {
         setAuthError(null);
@@ -261,11 +269,26 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
         ]);
         return classId;
       },
+      createBoard: async (classId, input) => {
+        if (!user) throw new Error("AUTH_REQUIRED");
+        const classroom = classes.find((item) => item.id === classId);
+        if (!classroom?.canManage) throw new Error("CLASS_MANAGEMENT_REQUIRED");
+        setDataError(null);
+        const result = await createClassBoard(classId, user.uid, input);
+        setBoards((current) => current.some((item) => item.id === result.board.id) ? current : [...current, result.board]);
+        setSections((current) => current.some((item) => item.id === result.section.id) ? current : [...current, result.section]);
+        setClasses((current) => current.map((item) => item.id === classId
+          ? { ...item, boardCount: item.boardCount + 1 }
+          : item));
+        return result.board.id;
+      },
       deleteClass: async (classId) => {
         setDataError(null);
         await deleteEmptyManagedClass(classId);
+        const removedBoardIds = new Set(boards.filter((item) => item.classId === classId).map((item) => item.id));
         setClasses((current) => current.filter((item) => item.id !== classId));
         setBoards((current) => current.filter((item) => item.classId !== classId));
+        setSections((current) => current.filter((item) => !removedBoardIds.has(item.boardId)));
       },
       ensureClassLoaded: async (classId) => {
         if (!user || !appRole || classes.some((item) => item.id === classId)) return;
@@ -277,6 +300,11 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
           setBoards((current) => [
             ...current.filter((item) => item.classId !== classId),
             ...result.boards,
+          ]);
+          const loadedBoardIds = new Set(result.boards.map((item) => item.id));
+          setSections((current) => [
+            ...current.filter((item) => !loadedBoardIds.has(item.boardId)),
+            ...result.sections,
           ]);
           setDataError(null);
         } catch (error) {
@@ -322,7 +350,7 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
         ]);
       },
     }),
-    [appRole, authError, authReady, boards, classes, dataError, dataLoading, posts, user],
+    [appRole, authError, authReady, boards, classes, dataError, dataLoading, posts, sections, user],
   );
 
   return (
