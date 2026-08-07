@@ -13,7 +13,25 @@ npm run dev
 
 Copy `.env.example` to `.env.local` and add the Firebase web configuration when available.
 
-GitHub Actions verifies every push. The Firebase Hosting deployment workflow activates after the repository secrets `FIREBASE_PROJECT_ID` and `FIREBASE_SERVICE_ACCOUNT_CLASSROOM_IMAGE_BOARD` are configured.
+GitHub Actions verifies every push and deploys `main` to Firebase Hosting after the repository configuration below is added.
+
+In GitHub, open **Settings → Secrets and variables → Actions**.
+
+Create these repository **Variables**:
+
+- `FIREBASE_PROJECT_ID`
+- `VITE_FIREBASE_API_KEY`
+- `VITE_FIREBASE_AUTH_DOMAIN`
+- `VITE_FIREBASE_PROJECT_ID`
+- `VITE_FIREBASE_APP_ID`
+- `VITE_APPS_SCRIPT_URL`
+- `VITE_ALLOWED_EMAIL_DOMAIN` (optional; leave unset to allow any Google account)
+
+Create this repository **Secret** containing the complete Firebase service-account JSON:
+
+- `FIREBASE_SERVICE_ACCOUNT_CLASSROOM_IMAGE_BOARD`
+
+The `VITE_` values are browser configuration and are included in the built application. The service-account JSON is privileged and must only be stored as an encrypted GitHub secret.
 
 ## Current routes
 
