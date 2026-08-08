@@ -50,15 +50,16 @@ jobs:
           test -n "$VITE_FIREBASE_APP_ID"
           test -n "$VITE_APPS_SCRIPT_URL"
       - run: npm run build
+      - name: Deploy Firebase Hosting
+        uses: FirebaseExtended/action-hosting-deploy@v0
+        with:
+          repoToken: ${{ secrets.GITHUB_TOKEN }}
+          firebaseServiceAccount: ${{ env.FIREBASE_SERVICE_ACCOUNT }}
+          channelId: live
+          projectId: ${{ env.FIREBASE_PROJECT_ID }}
       - name: Authenticate Firebase deployment
         uses: google-github-actions/auth@v2
         with:
           credentials_json: ${{ secrets.FIREBASE_SERVICE_ACCOUNT_CLASSROOM_IMAGE_BOARD }}
       - name: Deploy Firestore rules
         run: npx firebase deploy --only firestore:rules --project "$FIREBASE_PROJECT_ID" --non-interactive
-      - uses: FirebaseExtended/action-hosting-deploy@v0
-        with:
-          repoToken: ${{ secrets.GITHUB_TOKEN }}
-          firebaseServiceAccount: ${{ env.FIREBASE_SERVICE_ACCOUNT }}
-          channelId: live
-          projectId: ${{ env.FIREBASE_PROJECT_ID }}

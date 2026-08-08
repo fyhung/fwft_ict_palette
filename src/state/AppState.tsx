@@ -74,6 +74,8 @@ const teacher: DemoUser = {
   initials: "MC",
 };
 
+const AUTH_INITIALIZATION_TIMEOUT_MS = 10_000;
+
 function initialsFor(user: User) {
   const source = user.displayName || user.email || "User";
   return source
@@ -131,19 +133,38 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
   const [posts, setPosts] = useState(firebaseConfigured ? [] : initialPosts);
 
   useEffect(() => {
-    if (!auth) return;
+    if (!auth) {
+      setAuthReady(true);
+      setDataLoading(false);
+      setAuthError("Firebase Authentication could not start. Check the deployed Firebase configuration.");
+      return;
+    }
 
     let stopWorkspace: () => void = () => {};
     let stopRole: () => void = () => {};
+    let authSettled = false;
+    const authTimeout = window.setTimeout(() => {
+      if (authSettled) return;
+      setAuthReady(true);
+      setDataLoading(false);
+      setAuthError("Firebase took too long to check sign-in. Refresh the page or select Continue with Google.");
+    }, AUTH_INITIALIZATION_TIMEOUT_MS);
+
+    const finishAuthCheck = () => {
+      authSettled = true;
+      window.clearTimeout(authTimeout);
+    };
+
     const stopAuth = onAuthStateChanged(
       auth,
       (firebaseUser) => {
+        finishAuthCheck();
         stopWorkspace();
         stopRole();
         const appUser = firebaseUser ? toAppUser(firebaseUser) : null;
         setUser(appUser);
         setAuthReady(true);
-        if (firebaseUser) setAuthError(null);
+        setAuthError(null);
         if (!firebaseUser) {
           setClasses([]);
           setBoards([]);
@@ -191,12 +212,15 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
         });
       },
       (error) => {
+        finishAuthCheck();
         setAuthReady(true);
+        setDataLoading(false);
         setAuthError(error.message);
       },
     );
 
     return () => {
+      window.clearTimeout(authTimeout);
       stopWorkspace();
       stopRole();
       stopAuth();
