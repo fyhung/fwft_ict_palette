@@ -12,7 +12,7 @@ import {
   type DocumentData,
   type QueryDocumentSnapshot,
 } from "firebase/firestore";
-import type { AppRole, BoardSection, BoardSummary, Classroom, DemoUser, StaffCandidate } from "../types";
+import type { AppRole, BoardPost, BoardSection, BoardSummary, Classroom, DemoUser, StaffCandidate } from "../types";
 import { db } from "./client";
 
 export const APP_OWNER_EMAIL = "fyhung@twghfwfts.edu.hk";
@@ -73,6 +73,41 @@ function sectionFromSnapshot(boardId: string, snapshot: QueryDocumentSnapshot<Do
     title: String(data.title || "Untitled section"),
     note: String(data.note || ""),
     sortOrder: Number(data.sortOrder || 0),
+  };
+}
+
+function initialsFromName(name: string) {
+  return name
+    .split(/\s+/)
+    .filter(Boolean)
+    .slice(0, 2)
+    .map((part) => part[0]?.toUpperCase())
+    .join("") || "ST";
+}
+
+function postFromSnapshot(boardId: string, snapshot: QueryDocumentSnapshot<DocumentData>): BoardPost {
+  const data = snapshot.data();
+  const authorName = String(data.authorName || "Student");
+  const mainImageUrl = String(data.mainImageUrl || "");
+  const thumbImageUrl = String(data.thumbImageUrl || "");
+  return {
+    id: snapshot.id,
+    boardId,
+    sectionId: String(data.sectionId || ""),
+    authorUid: String(data.authorUid || ""),
+    authorName,
+    authorInitials: initialsFromName(authorName),
+    caption: String(data.caption || ""),
+    imageUrl: thumbImageUrl || mainImageUrl || undefined,
+    mainImageUrl: mainImageUrl || undefined,
+    thumbImageUrl: thumbImageUrl || undefined,
+    mainFileId: data.mainFileId ? String(data.mainFileId) : undefined,
+    thumbFileId: data.thumbFileId ? String(data.thumbFileId) : undefined,
+    imageBytes: Number(data.imageBytes || 0),
+    thumbBytes: Number(data.thumbBytes || 0),
+    visual: "visual-upload",
+    createdLabel: "Just now",
+    commentCount: Number(data.commentCount || 0),
   };
 }
 
@@ -224,6 +259,86 @@ export async function createClassBoard(
       sortOrder: 0,
     },
   };
+}
+
+export function reservePostId(classId: string, boardId: string) {
+  if (!db) throw new Error("FIRESTORE_NOT_CONFIGURED");
+  return doc(collection(db, "classes", classId, "boards", boardId, "posts")).id;
+}
+
+export async function createBoardPost(
+  classId: string,
+  boardId: string,
+  postId: string,
+  user: DemoUser,
+  input: {
+    sectionId: string;
+    caption: string;
+    mainFileId: string;
+    thumbFileId: string;
+    mainImageUrl: string;
+    thumbImageUrl: string;
+    imageBytes: number;
+    thumbBytes: number;
+  },
+): Promise<BoardPost> {
+  if (!db) throw new Error("FIRESTORE_NOT_CONFIGURED");
+  await setDoc(doc(db, "classes", classId, "boards", boardId, "posts", postId), {
+    sectionId: input.sectionId,
+    authorUid: user.uid,
+    authorName: user.displayName,
+    authorPhotoURL: user.photoURL || "",
+    caption: input.caption,
+    mainFileId: input.mainFileId,
+    thumbFileId: input.thumbFileId,
+    mainImageUrl: input.mainImageUrl,
+    thumbImageUrl: input.thumbImageUrl,
+    imageBytes: input.imageBytes,
+    thumbBytes: input.thumbBytes,
+    sortOrder: Date.now(),
+    status: "active",
+    commentCount: 0,
+    createdAt: serverTimestamp(),
+    updatedAt: serverTimestamp(),
+  });
+
+  return {
+    id: postId,
+    boardId,
+    sectionId: input.sectionId,
+    authorUid: user.uid,
+    authorName: user.displayName,
+    authorInitials: initialsFromName(user.displayName),
+    caption: input.caption,
+    imageUrl: input.thumbImageUrl,
+    mainImageUrl: input.mainImageUrl,
+    thumbImageUrl: input.thumbImageUrl,
+    mainFileId: input.mainFileId,
+    thumbFileId: input.thumbFileId,
+    imageBytes: input.imageBytes,
+    thumbBytes: input.thumbBytes,
+    visual: "visual-upload",
+    createdLabel: "Just now",
+    commentCount: 0,
+  };
+}
+
+export function subscribeBoardPosts(
+  classId: string,
+  boardId: string,
+  onData: (posts: BoardPost[]) => void,
+  onError: (error: Error) => void,
+) {
+  if (!db) throw new Error("FIRESTORE_NOT_CONFIGURED");
+  return onSnapshot(
+    collection(db, "classes", classId, "boards", boardId, "posts"),
+    (snapshot) => onData(
+      [...snapshot.docs]
+        .sort((a, b) => Number(a.data().sortOrder || 0) - Number(b.data().sortOrder || 0))
+        .map((item) => postFromSnapshot(boardId, item)),
+    ),
+    (error) => onError(error),
+  );
 }
 
 export async function deleteEmptyManagedClass(classId: string) {

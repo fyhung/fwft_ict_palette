@@ -6,6 +6,12 @@ export interface ProbeUploadResult {
   thumbnail: { fileId: string; webContentLink?: string; resourceKey?: string; size: number };
 }
 
+export interface PostUploadResult {
+  postId: string;
+  main: ProbeUploadResult["main"];
+  thumbnail: ProbeUploadResult["thumbnail"];
+}
+
 async function blobToBase64(blob: Blob) {
   const bytes = new Uint8Array(await blob.arrayBuffer());
   let binary = "";
@@ -46,6 +52,62 @@ export async function uploadProbe(
   const payload = await response.json();
   if (!payload.ok) throw new Error(payload.error?.code ?? "APPS_SCRIPT_ERROR");
   return payload.data as ProbeUploadResult;
+}
+
+export async function uploadPostImage(
+  idToken: string,
+  classId: string,
+  boardId: string,
+  postId: string,
+  main: Blob,
+  thumbnail: Blob,
+): Promise<PostUploadResult> {
+  if (!endpoint) throw new Error("APPS_SCRIPT_NOT_CONFIGURED");
+  const response = await fetch(endpoint, {
+    method: "POST",
+    redirect: "follow",
+    headers: { "Content-Type": "text/plain;charset=utf-8" },
+    body: JSON.stringify({
+      action: "uploadPostImage",
+      idToken,
+      classId,
+      boardId,
+      postId,
+      main: { mimeType: main.type, base64: await blobToBase64(main) },
+      thumbnail: { mimeType: thumbnail.type, base64: await blobToBase64(thumbnail) },
+    }),
+  });
+  if (!response.ok) throw new Error(`APPS_SCRIPT_HTTP_${response.status}`);
+  const payload = await response.json();
+  if (!payload.ok) throw new Error(payload.error?.code ?? "APPS_SCRIPT_ERROR");
+  return payload.data as PostUploadResult;
+}
+
+export async function deletePostFiles(
+  idToken: string,
+  classId: string,
+  boardId: string,
+  postId: string,
+  fileIds: string[],
+) {
+  if (!endpoint) throw new Error("APPS_SCRIPT_NOT_CONFIGURED");
+  const response = await fetch(endpoint, {
+    method: "POST",
+    redirect: "follow",
+    headers: { "Content-Type": "text/plain;charset=utf-8" },
+    body: JSON.stringify({
+      action: "deletePostFiles",
+      idToken,
+      classId,
+      boardId,
+      postId,
+      fileIds,
+    }),
+  });
+  if (!response.ok) throw new Error(`APPS_SCRIPT_HTTP_${response.status}`);
+  const payload = await response.json();
+  if (!payload.ok) throw new Error(payload.error?.code ?? "APPS_SCRIPT_ERROR");
+  return payload.data as { postId: string; deleted: number };
 }
 
 export async function deleteProbe(

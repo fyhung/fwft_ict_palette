@@ -2,6 +2,7 @@
 import {
   createContext,
   type ReactNode,
+  useCallback,
   useContext,
   useEffect,
   useMemo,
@@ -19,22 +20,27 @@ import { firebaseConfigured } from "../firebase/config";
 import { auth } from "../firebase/client";
 import {
   createOwnedClass,
+  createBoardPost,
   createClassBoard,
   deleteEmptyManagedClass,
   listStaffCandidates,
   loadClassWorkspace,
+  reservePostId,
   setTeacherApproval,
   subscribeApplicationRole,
+  subscribeBoardPosts,
   subscribeTeacherWorkspace,
   upsertUserProfile,
 } from "../firebase/workspace";
+import { deletePostFiles, driveMediaUrl, uploadPostImage } from "../services/appsScriptApi";
+import { processImage } from "../services/imageProcessor";
 import type { AppRole, BoardPost, BoardSection, BoardSummary, Classroom, DemoUser, StaffCandidate } from "../types";
 
 interface NewPostInput {
   boardId: string;
   sectionId: string;
   caption: string;
-  imageUrl?: string;
+  file: File;
 }
 
 interface AppStateValue {
@@ -62,7 +68,8 @@ interface AppStateValue {
     boardId: string,
     setting: "allowPosting" | "allowComments",
   ) => void;
-  addPost: (input: NewPostInput) => void;
+  addPost: (input: NewPostInput) => Promise<void>;
+  watchBoardPosts: (classId: string, boardId: string) => () => void;
 }
 
 const AppStateContext = createContext<AppStateValue | null>(null);
@@ -227,6 +234,22 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
     };
   }, []);
 
+  const watchBoardPosts = useCallback((classId: string, boardId: string) => {
+    if (!firebaseConfigured) return () => {};
+    return subscribeBoardPosts(
+      classId,
+      boardId,
+      (nextPosts) => {
+        setPosts((current) => [
+          ...current.filter((item) => item.boardId !== boardId),
+          ...nextPosts,
+        ]);
+        setDataError(null);
+      },
+      (error) => setDataError(error.message),
+    );
+  }, []);
+
   const value = useMemo<AppStateValue>(
     () => ({
       user,
@@ -240,6 +263,7 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
       boards,
       sections,
       posts,
+      watchBoardPosts,
       signIn: async () => {
         setAuthError(null);
         if (!auth) {
@@ -354,27 +378,67 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
           ),
         );
       },
-      addPost: ({ boardId, sectionId, caption, imageUrl }) => {
-        const id = `demo-${crypto.randomUUID()}`;
-        setPosts((current) => [
-          ...current,
-          {
-            id,
+      addPost: async ({ boardId, sectionId, caption, file }) => {
+        if (!user) throw new Error("AUTH_REQUIRED");
+        const board = boards.find((item) => item.id === boardId);
+        if (!board) throw new Error("BOARD_NOT_FOUND");
+        if (!board.allowPosting || board.status !== "active") throw new Error("POSTING_CLOSED");
+
+        if (!firebaseConfigured) {
+          const imageUrl = URL.createObjectURL(file);
+          setPosts((current) => [...current, {
+            id: `demo-${crypto.randomUUID()}`,
             boardId,
             sectionId,
-            authorUid: user?.uid ?? "demo-student",
-            authorName: user?.displayName ?? "Student",
-            authorInitials: user?.initials ?? "ST",
+            authorUid: user.uid,
+            authorName: user.displayName,
+            authorInitials: user.initials,
             caption,
             imageUrl,
             visual: "visual-upload",
             createdLabel: "Just now",
             commentCount: 0,
-          },
-        ]);
+          }]);
+          return;
+        }
+
+        if (!auth?.currentUser) throw new Error("AUTH_REQUIRED");
+        const postId = reservePostId(board.classId, boardId);
+        const processed = await processImage(file);
+        const idToken = await auth.currentUser.getIdToken();
+        const upload = await uploadPostImage(
+          idToken,
+          board.classId,
+          boardId,
+          postId,
+          processed.main,
+          processed.thumbnail,
+        );
+        const mainImageUrl = driveMediaUrl(upload.main);
+        const thumbImageUrl = driveMediaUrl(upload.thumbnail);
+
+        try {
+          const post = await createBoardPost(board.classId, boardId, postId, user, {
+            sectionId,
+            caption,
+            mainFileId: upload.main.fileId,
+            thumbFileId: upload.thumbnail.fileId,
+            mainImageUrl,
+            thumbImageUrl,
+            imageBytes: upload.main.size,
+            thumbBytes: upload.thumbnail.size,
+          });
+          setPosts((current) => current.some((item) => item.id === post.id) ? current : [...current, post]);
+        } catch (error) {
+          await deletePostFiles(idToken, board.classId, boardId, postId, [
+            upload.main.fileId,
+            upload.thumbnail.fileId,
+          ]).catch(() => undefined);
+          throw error;
+        }
       },
     }),
-    [appRole, authError, authReady, boards, classes, dataError, dataLoading, posts, sections, user],
+    [appRole, authError, authReady, boards, classes, dataError, dataLoading, posts, sections, user, watchBoardPosts],
   );
 
   return (

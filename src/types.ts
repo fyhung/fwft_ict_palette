@@ -45,6 +45,12 @@ export interface BoardPost {
   authorInitials: string;
   caption: string;
   imageUrl?: string;
+  mainImageUrl?: string;
+  thumbImageUrl?: string;
+  mainFileId?: string;
+  thumbFileId?: string;
+  imageBytes?: number;
+  thumbBytes?: number;
   visual: string;
   createdLabel: string;
   commentCount: number;

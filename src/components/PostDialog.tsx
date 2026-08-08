@@ -13,7 +13,10 @@ export function PostDialog({ boardId, open, onClose }: PostDialogProps) {
   const availableSections = sections.filter((section) => section.boardId === boardId).sort((a, b) => a.sortOrder - b.sortOrder);
   const [caption, setCaption] = useState("");
   const [sectionId, setSectionId] = useState("");
+  const [file, setFile] = useState<File>();
   const [preview, setPreview] = useState<string>();
+  const [stage, setStage] = useState<"idle" | "posting">("idle");
+  const [error, setError] = useState<string>();
 
   useEffect(() => () => {
     if (preview) URL.revokeObjectURL(preview);
@@ -27,13 +30,31 @@ export function PostDialog({ boardId, open, onClose }: PostDialogProps) {
 
   if (!open) return null;
 
-  const submit = (event: FormEvent) => {
+  const submit = async (event: FormEvent) => {
     event.preventDefault();
-    if (!caption.trim() || !preview || !sectionId) return;
-    addPost({ boardId, sectionId, caption: caption.trim(), imageUrl: preview });
-    setCaption("");
-    setPreview(undefined);
-    onClose();
+    if (!caption.trim() || !file || !sectionId || stage === "posting") return;
+    setStage("posting");
+    setError(undefined);
+    try {
+      await addPost({ boardId, sectionId, caption: caption.trim(), file });
+      setCaption("");
+      setFile(undefined);
+      setPreview(undefined);
+      onClose();
+    } catch (reason) {
+      const code = reason instanceof Error ? reason.message : "POST_UPLOAD_FAILED";
+      const messages: Record<string, string> = {
+        AUTH_REQUIRED: "Sign in with Google and try again.",
+        IMAGE_TYPE_UNSUPPORTED: "Choose a JPEG, PNG or WebP image.",
+        IMAGE_SOURCE_TOO_LARGE: "Choose an image smaller than 10 MB.",
+        IMAGE_MAIN_TOO_LARGE: "This image could not be compressed enough. Try a smaller image.",
+        INVALID_ACTION: "The Apps Script deployment needs to be updated before posting photos.",
+        POSTING_CLOSED: "Posting is closed for this board.",
+      };
+      setError(messages[code] || code);
+    } finally {
+      setStage("idle");
+    }
   };
 
   return (
@@ -70,8 +91,11 @@ export function PostDialog({ boardId, open, onClose }: PostDialogProps) {
               accept="image/jpeg,image/png,image/webp"
               required
               onChange={(event) => {
-                const file = event.target.files?.[0];
-                if (file) setPreview(URL.createObjectURL(file));
+                const nextFile = event.target.files?.[0];
+                if (!nextFile) return;
+                setFile(nextFile);
+                setPreview(URL.createObjectURL(nextFile));
+                setError(undefined);
               }}
             />
           </label>
@@ -94,9 +118,12 @@ export function PostDialog({ boardId, open, onClose }: PostDialogProps) {
               ))}
             </select>
           </label>
+          {error && <div className="probe-error" role="alert"><strong>Could not post photo.</strong> {error}</div>}
           <div className="dialog-actions">
-            <button className="button button-quiet" type="button" onClick={onClose}>Cancel</button>
-            <button className="button button-primary" type="submit">Post photo</button>
+            <button className="button button-quiet" type="button" onClick={onClose} disabled={stage === "posting"}>Cancel</button>
+            <button className="button button-primary" type="submit" disabled={stage === "posting"}>
+              {stage === "posting" ? "Compressing and uploading..." : "Post photo"}
+            </button>
           </div>
         </form>
       </section>

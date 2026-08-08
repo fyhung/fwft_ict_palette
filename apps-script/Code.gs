@@ -1,4 +1,4 @@
-const APP_VERSION = '0.1.0-spike';
+const APP_VERSION = '0.2.0-posts';
 
 function doGet(e) {
   const action = e && e.parameter ? e.parameter.action : '';
@@ -11,6 +11,8 @@ function doPost(e) {
     const body = parseBody_(e);
     if (body.action === 'uploadProbe') return json_({ ok: true, data: uploadProbe_(body) });
     if (body.action === 'deleteProbe') return json_({ ok: true, data: deleteProbe_(body) });
+    if (body.action === 'uploadPostImage') return json_({ ok: true, data: uploadPostImage_(body) });
+    if (body.action === 'deletePostFiles') return json_({ ok: true, data: deletePostFiles_(body) });
     return jsonError_('INVALID_ACTION', 'Unknown action.');
   } catch (error) {
     console.error(error && error.stack ? error.stack : error);

@@ -16,7 +16,7 @@ import { useAppState } from "../state/AppState";
 
 export function BoardPage() {
   const { classId = "", boardId = "" } = useParams();
-  const { appRole, classes, boards, sections, posts, toggleBoardSetting, user, signIn, ensureClassLoaded } = useAppState();
+  const { appRole, classes, boards, sections, posts, toggleBoardSetting, user, signIn, ensureClassLoaded, watchBoardPosts } = useAppState();
   const board = boards.find((item) => item.id === boardId);
   const classroom = classes.find((item) => item.id === classId);
   const [dialogOpen, setDialogOpen] = useState(false);
@@ -28,6 +28,11 @@ export function BoardPage() {
     requestedClass.current = classId;
     void ensureClassLoaded(classId);
   }, [appRole, classId, classroom, ensureClassLoaded, user]);
+
+  useEffect(() => {
+    if (!user || !board) return;
+    return watchBoardPosts(classId, boardId);
+  }, [board, boardId, classId, user, watchBoardPosts]);
 
   if (!classroom && user && appRole) return <main className="page-shell"><div className="workspace-empty">Loading board...</div></main>;
   if (!board || !classroom) return <main className="page-shell"><h1>Board not found</h1></main>;
