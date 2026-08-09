@@ -1,6 +1,11 @@
 export const SOURCE_IMAGE_LIMIT = 10 * 1024 * 1024;
 export const MAIN_IMAGE_LIMIT = 1.5 * 1024 * 1024;
 export const THUMB_IMAGE_LIMIT = 300 * 1024;
+export const MAIN_LONGEST_EDGE = 1600;
+export const THUMB_LONGEST_EDGE = 480;
+export const MAIN_WEBP_QUALITY = 0.78;
+export const THUMB_WEBP_QUALITY = 0.68;
+export const REUSABLE_SOURCE_LIMIT = 1.2 * 1024 * 1024;
 export const SUPPORTED_IMAGE_TYPES = ["image/jpeg", "image/png", "image/webp"] as const;
 
 export interface ProcessedImage {
@@ -22,6 +27,12 @@ export function calculateTargetSize(width: number, height: number, longestEdge: 
     width: Math.max(1, Math.round(width * scale)),
     height: Math.max(1, Math.round(height * scale)),
   };
+}
+
+export function canReuseSourceImage(type: string, size: number, width: number, height: number) {
+  return (type === "image/jpeg" || type === "image/webp")
+    && size <= REUSABLE_SOURCE_LIMIT
+    && Math.max(width, height) <= MAIN_LONGEST_EDGE;
 }
 
 async function loadImage(file: File) {
@@ -72,10 +83,15 @@ export async function processImage(file: File): Promise<ProcessedImage> {
   const image = await loadImage(file);
   const sourceWidth = "naturalWidth" in image ? image.naturalWidth : image.width;
   const sourceHeight = "naturalHeight" in image ? image.naturalHeight : image.height;
-  const mainSize = calculateTargetSize(sourceWidth, sourceHeight, 1920);
-  const thumbSize = calculateTargetSize(sourceWidth, sourceHeight, 560);
-  const main = await renderBlob(image, mainSize.width, mainSize.height, 0.82);
-  const thumbnail = await renderBlob(image, thumbSize.width, thumbSize.height, 0.76);
+  const mainSize = calculateTargetSize(sourceWidth, sourceHeight, MAIN_LONGEST_EDGE);
+  const thumbSize = calculateTargetSize(sourceWidth, sourceHeight, THUMB_LONGEST_EDGE);
+  const reuseSource = canReuseSourceImage(file.type, file.size, sourceWidth, sourceHeight);
+  const [main, thumbnail] = await Promise.all([
+    reuseSource
+      ? Promise.resolve(file as Blob)
+      : renderBlob(image, mainSize.width, mainSize.height, MAIN_WEBP_QUALITY),
+    renderBlob(image, thumbSize.width, thumbSize.height, THUMB_WEBP_QUALITY),
+  ]);
 
   if ("close" in image && typeof image.close === "function") image.close();
   if (main.size > MAIN_IMAGE_LIMIT) throw new Error("IMAGE_MAIN_TOO_LARGE");

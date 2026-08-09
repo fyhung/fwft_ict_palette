@@ -287,6 +287,14 @@ h1, h2, h3 { font-family: "Manrope", sans-serif; letter-spacing: -0.035em; }
 .field input, .field textarea, .field select { width: 100%; border: 1px solid var(--line); border-radius: 12px; background: white; padding: .8rem; color: var(--ink); }
 .field textarea { min-height: 110px; resize: vertical; }
 .field > small { justify-self: end; color: var(--muted); font-weight: 500; }
+.upload-stage { min-height: 42px; margin-top: .7rem; padding: .55rem .7rem; display: flex; align-items: center; justify-content: space-between; gap: .8rem; border: 1px solid #d7d2c8; border-radius: 10px; color: var(--muted); background: #f3f0e9; font-size: .76rem; }
+.upload-stage::before { content: ""; width: 9px; height: 9px; flex: 0 0 auto; border-radius: 50%; background: #b18a50; }
+.upload-stage span { margin-right: auto; font-weight: 750; }
+.upload-stage small { white-space: nowrap; }
+.upload-stage.is-ready { color: #24604e; border-color: #b8d1c4; background: #edf6f0; }
+.upload-stage.is-ready::before { background: #4d9b74; }
+.upload-stage.is-preparing::before, .upload-stage.is-uploading::before, .upload-stage.is-saving::before { animation: uploadPulse 1s ease-in-out infinite alternate; }
+@keyframes uploadPulse { to { opacity: .28; transform: scale(.72); } }
 .dialog-actions { justify-content: flex-end; margin-top: 1.2rem; }
 .compact-dialog { width: min(520px, 100%); }
 .workspace-empty { padding: 2rem; margin-bottom: 1rem; border: 1px dashed #b9beb8; border-radius: 18px; color: var(--muted); background: #f4f2ec; text-align: center; }
@@ -321,6 +329,7 @@ h1, h2, h3 { font-family: "Manrope", sans-serif; letter-spacing: -0.035em; }
 .comment-form { display: grid; grid-template-columns: 1fr auto; gap: .65rem; margin-top: 1rem; padding-top: 1rem; border-top: 1px solid var(--line); }
 .comment-form textarea { grid-column: 1 / -1; min-height: 80px; padding: .75rem; border: 1px solid var(--line); border-radius: 12px; resize: vertical; }
 .file-button input { position: absolute; width: 1px; height: 1px; opacity: 0; }
+.comment-upload-stage { grid-column: 1 / -1; margin-top: 0; }
 .form-error { padding: .7rem; border-radius: 10px; color: #8b2f22; background: #fff0eb; }
 .media-lightbox { position: fixed; inset: 0; z-index: 100; display: grid; place-items: center; padding: clamp(.5rem,2vw,1.5rem); background: rgba(6,10,8,.96); cursor: zoom-out; }
 .media-lightbox img { width: 100%; height: 100%; object-fit: contain; }

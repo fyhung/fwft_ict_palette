@@ -46,7 +46,7 @@ import {
   updateBoardSettings,
 } from "../firebase/workspace";
 import { deleteBoardFiles, deleteCommentFiles, deletePostFiles, deletePostTreeFiles, driveMediaUrl, uploadCommentImage, uploadPostImage } from "../services/appsScriptApi";
-import { processImage } from "../services/imageProcessor";
+import { processImage, type ProcessedImage } from "../services/imageProcessor";
 import type { AppRole, BoardComment, BoardPost, BoardSection, BoardSummary, Classroom, DemoUser, StaffCandidate } from "../types";
 
 interface NewPostInput {
@@ -54,6 +54,8 @@ interface NewPostInput {
   sectionId: string;
   caption: string;
   file: File;
+  processed?: ProcessedImage;
+  onStage?: (stage: "preparing" | "uploading" | "saving") => void;
 }
 
 interface AppStateValue {
@@ -93,7 +95,7 @@ interface AppStateValue {
   deletePost: (postId: string) => Promise<void>;
   watchBoardPosts: (classId: string, boardId: string) => () => void;
   watchBoardComments: (classId: string, boardId: string) => () => void;
-  addComment: (boardId: string, postId: string, text: string, file?: File) => Promise<void>;
+  addComment: (boardId: string, postId: string, text: string, file?: File, processed?: ProcessedImage, onStage?: (stage: "preparing" | "uploading" | "saving") => void) => Promise<void>;
   updateComment: (commentId: string, text: string) => Promise<void>;
   deleteComment: (commentId: string) => Promise<void>;
 }
@@ -477,7 +479,7 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
         if (firebaseConfigured) await reorderBoardSections(board.classId, board.id, normalized.map((item) => item.id));
         setSections((current) => [...current.filter((item) => item.boardId !== board.id), ...normalized]);
       },
-      addPost: async ({ boardId, sectionId, caption, file }) => {
+      addPost: async ({ boardId, sectionId, caption, file, processed, onStage }) => {
         if (!user) throw new Error("AUTH_REQUIRED");
         const board = boards.find((item) => item.id === boardId);
         if (!board) throw new Error("BOARD_NOT_FOUND");
@@ -503,20 +505,23 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
 
         if (!auth?.currentUser) throw new Error("AUTH_REQUIRED");
         const postId = reservePostId(board.classId, boardId);
-        const processed = await processImage(file);
+        if (!processed) onStage?.("preparing");
+        const prepared = processed || await processImage(file);
+        onStage?.("uploading");
         const idToken = await auth.currentUser.getIdToken();
         const upload = await uploadPostImage(
           idToken,
           board.classId,
           boardId,
           postId,
-          processed.main,
-          processed.thumbnail,
+          prepared.main,
+          prepared.thumbnail,
         );
         const mainImageUrl = driveMediaUrl(upload.main);
         const thumbImageUrl = driveMediaUrl(upload.thumbnail);
 
         try {
+          onStage?.("saving");
           const post = await createBoardPost(board.classId, boardId, postId, user, {
             sectionId,
             caption,
@@ -559,7 +564,7 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
         setPosts((current) => current.filter((item) => item.id !== postId));
         setComments((current) => current.filter((item) => item.postId !== postId));
       },
-      addComment: async (boardId, postId, text, file) => {
+      addComment: async (boardId, postId, text, file, processed, onStage) => {
         if (!user) throw new Error("AUTH_REQUIRED");
         const board = boards.find((item) => item.id === boardId);
         if (!board?.allowComments) throw new Error("COMMENTS_CLOSED");
@@ -573,8 +578,10 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
         if (file && firebaseConfigured) {
           if (!auth?.currentUser) throw new Error("AUTH_REQUIRED");
           token = await auth.currentUser.getIdToken();
-          const processed = await processImage(file);
-          uploaded = await uploadCommentImage(token, board.classId, boardId, postId, commentId, processed.main, processed.thumbnail);
+          if (!processed) onStage?.("preparing");
+          const prepared = processed || await processImage(file);
+          onStage?.("uploading");
+          uploaded = await uploadCommentImage(token, board.classId, boardId, postId, commentId, prepared.main, prepared.thumbnail);
           Object.assign(comment, {
             mainFileId: uploaded.main.fileId, thumbFileId: uploaded.thumbnail.fileId,
             mainImageUrl: driveMediaUrl(uploaded.main), thumbImageUrl: driveMediaUrl(uploaded.thumbnail),
@@ -585,6 +592,7 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
           comment.thumbImageUrl = comment.mainImageUrl;
         }
         try {
+          onStage?.("saving");
           if (firebaseConfigured) await createBoardComment(board.classId, boardId, commentId, user, comment);
           setComments((current) => [...current, comment]);
         } catch (error) {

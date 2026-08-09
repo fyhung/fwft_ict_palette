@@ -42,6 +42,10 @@ export async function uploadProbe(
 ): Promise<ProbeUploadResult> {
   if (!endpoint) throw new Error("APPS_SCRIPT_NOT_CONFIGURED");
   const operationId = crypto.randomUUID();
+  const [mainBase64, thumbnailBase64] = await Promise.all([
+    blobToBase64(main),
+    blobToBase64(thumbnail),
+  ]);
   const response = await fetch(endpoint, {
     method: "POST",
     redirect: "follow",
@@ -50,8 +54,8 @@ export async function uploadProbe(
       action: "uploadProbe",
       idToken,
       operationId,
-      main: { mimeType: main.type, base64: await blobToBase64(main) },
-      thumbnail: { mimeType: thumbnail.type, base64: await blobToBase64(thumbnail) },
+      main: { mimeType: main.type, base64: mainBase64 },
+      thumbnail: { mimeType: thumbnail.type, base64: thumbnailBase64 },
     }),
   });
   if (!response.ok) throw new Error(`APPS_SCRIPT_HTTP_${response.status}`);
@@ -69,6 +73,10 @@ export async function uploadPostImage(
   thumbnail: Blob,
 ): Promise<PostUploadResult> {
   if (!endpoint) throw new Error("APPS_SCRIPT_NOT_CONFIGURED");
+  const [mainBase64, thumbnailBase64] = await Promise.all([
+    blobToBase64(main),
+    blobToBase64(thumbnail),
+  ]);
   const response = await fetch(endpoint, {
     method: "POST",
     redirect: "follow",
@@ -79,8 +87,8 @@ export async function uploadPostImage(
       classId,
       boardId,
       postId,
-      main: { mimeType: main.type, base64: await blobToBase64(main) },
-      thumbnail: { mimeType: thumbnail.type, base64: await blobToBase64(thumbnail) },
+      main: { mimeType: main.type, base64: mainBase64 },
+      thumbnail: { mimeType: thumbnail.type, base64: thumbnailBase64 },
     }),
   });
   if (!response.ok) throw new Error(`APPS_SCRIPT_HTTP_${response.status}`);
@@ -126,14 +134,18 @@ export async function uploadCommentImage(
   thumbnail: Blob,
 ): Promise<CommentUploadResult> {
   if (!endpoint) throw new Error("APPS_SCRIPT_NOT_CONFIGURED");
+  const [mainBase64, thumbnailBase64] = await Promise.all([
+    blobToBase64(main),
+    blobToBase64(thumbnail),
+  ]);
   const response = await fetch(endpoint, {
     method: "POST",
     redirect: "follow",
     headers: { "Content-Type": "text/plain;charset=utf-8" },
     body: JSON.stringify({
       action: "uploadCommentImage", idToken, classId, boardId, postId, commentId,
-      main: { mimeType: main.type, base64: await blobToBase64(main) },
-      thumbnail: { mimeType: thumbnail.type, base64: await blobToBase64(thumbnail) },
+      main: { mimeType: main.type, base64: mainBase64 },
+      thumbnail: { mimeType: thumbnail.type, base64: thumbnailBase64 },
     }),
   });
   if (!response.ok) throw new Error(`APPS_SCRIPT_HTTP_${response.status}`);

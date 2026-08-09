@@ -1,8 +1,9 @@
 import { ImagePlus, Maximize2, Pencil, Save, Trash2, X } from "lucide-react";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useAppState } from "../state/AppState";
 import type { BoardPost } from "../types";
 import { FullscreenMediaViewer, type ViewerMediaItem } from "./FullscreenMediaViewer";
+import { processImage, type ProcessedImage } from "../services/imageProcessor";
 
 export function PostDetailDialog({ post, canManage, startEditing = false, open, onClose, postPosition = 1, postCount = 1, onPreviousPost, onNextPost }: { post: BoardPost; canManage: boolean; startEditing?: boolean; open: boolean; onClose: () => void; postPosition?: number; postCount?: number; onPreviousPost?: () => void; onNextPost?: () => void }) {
   const { user, boards, sections, comments, addComment, updateComment, deleteComment, updatePost, deletePost } = useAppState();
@@ -14,6 +15,9 @@ export function PostDetailDialog({ post, canManage, startEditing = false, open, 
   const [sectionId, setSectionId] = useState(post.sectionId);
   const [text, setText] = useState("");
   const [file, setFile] = useState<File>();
+  const [commentProcessed, setCommentProcessed] = useState<ProcessedImage>();
+  const [commentStage, setCommentStage] = useState<"idle" | "preparing" | "ready" | "uploading" | "saving">("idle");
+  const commentPreparationId = useRef(0);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   const [galleryIndex, setGalleryIndex] = useState<number>();
@@ -52,10 +56,28 @@ export function PostDetailDialog({ post, canManage, startEditing = false, open, 
   }
   async function submitComment() {
     if (!text.trim() && !file) return setError("Write a comment or attach an image.");
+    if (file && !commentProcessed) return setError("Please wait for the image to finish preparing.");
     setBusy(true); setError("");
-    try { await addComment(post.boardId, post.id, text.trim(), file); setText(""); setFile(undefined); }
+    let posted = false;
+    try {
+      await addComment(post.boardId, post.id, text.trim(), file, commentProcessed, setCommentStage);
+      setText(""); setFile(undefined); setCommentProcessed(undefined); setCommentStage("idle"); posted = true;
+    }
     catch (cause) { setError(cause instanceof Error ? cause.message : "Could not add the comment."); }
-    finally { setBusy(false); }
+    finally { setBusy(false); if (!posted) setCommentStage(commentProcessed ? "ready" : "idle"); }
+  }
+  async function prepareCommentFile(nextFile: File) {
+    const requestId = ++commentPreparationId.current;
+    setFile(nextFile); setCommentProcessed(undefined); setCommentStage("preparing"); setError("");
+    try {
+      const result = await processImage(nextFile);
+      if (requestId !== commentPreparationId.current) return;
+      setCommentProcessed(result); setCommentStage("ready");
+    } catch (cause) {
+      if (requestId !== commentPreparationId.current) return;
+      setFile(undefined); setCommentStage("idle");
+      setError(cause instanceof Error ? cause.message : "Could not prepare comment image.");
+    }
   }
   async function editComment(commentId: string, currentText: string) {
     const next = window.prompt("Edit comment", currentText);
@@ -90,7 +112,7 @@ export function PostDetailDialog({ post, canManage, startEditing = false, open, 
           {(canManage || user?.uid === comment.authorUid) && <div className="comment-actions"><button onClick={() => void editComment(comment.id, comment.text)}>Edit</button><button onClick={() => void removeComment(comment.id)}>Delete</button></div>}</div>
         </article>)}
         {!postComments.length && <p className="muted-copy">No comments yet.</p>}
-        {board.allowComments ? <div className="comment-form"><textarea maxLength={500} placeholder="Write a comment…" value={text} onChange={(e) => setText(e.target.value)} /><label className="button button-secondary file-button"><ImagePlus size={16} /> {file ? file.name : "Add image"}<input type="file" accept="image/jpeg,image/png,image/webp" onChange={(e) => setFile(e.target.files?.[0])} /></label><button className="button button-primary" disabled={busy} onClick={() => void submitComment()}>{busy ? "Posting…" : "Post comment"}</button></div> : <p className="muted-copy">Comments are closed.</p>}
+        {board.allowComments ? <div className="comment-form"><textarea maxLength={500} placeholder="Write a comment…" value={text} onChange={(e) => setText(e.target.value)} /><label className="button button-secondary file-button"><ImagePlus size={16} /> {file ? file.name : "Add image"}<input type="file" accept="image/jpeg,image/png,image/webp" onChange={(e) => { const next = e.target.files?.[0]; if (next) void prepareCommentFile(next); }} /></label><button className="button button-primary" disabled={busy || commentStage === "preparing" || (Boolean(file) && !commentProcessed)} onClick={() => void submitComment()}>{commentStage === "preparing" ? "Preparing…" : commentStage === "uploading" ? "Uploading…" : commentStage === "saving" ? "Saving…" : "Post comment"}</button>{file && <div className={`upload-stage comment-upload-stage is-${commentStage}`}><span>{commentStage === "preparing" ? "Preparing image…" : commentStage === "ready" ? "Image ready" : commentStage === "uploading" ? "Uploading image…" : commentStage === "saving" ? "Saving comment…" : ""}</span>{commentProcessed && <small>{Math.round(commentProcessed.main.size / 1024)} KB</small>}</div>}</div> : <p className="muted-copy">Comments are closed.</p>}
       </div>
       {error && <p className="form-error">{error}</p>}
     </section>
