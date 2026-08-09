@@ -230,23 +230,25 @@ h1, h2, h3 { font-family: "Manrope", sans-serif; letter-spacing: -0.035em; }
 .board-card-footer .button { min-height: 36px; padding: .48rem .75rem; }
 
 .board-page { padding-bottom: 7rem; }
-.board-topbar { min-height: 78px; display: flex; align-items: center; justify-content: space-between; gap: 1rem; border-bottom: 1px solid var(--line); }
+.board-topbar { min-height: 64px; display: flex; align-items: center; justify-content: space-between; gap: 1rem; border-bottom: 1px solid var(--line); }
 .board-topbar .back-link { margin: 0; }
-.board-heading { display: grid; grid-template-columns: minmax(0, 1fr) 330px; align-items: center; gap: 3rem; padding-block: clamp(3rem, 7vw, 5rem); }
-.board-kicker { display: flex; align-items: center; gap: .65rem; margin-bottom: .8rem; color: var(--muted); font-size: .75rem; font-weight: 800; text-transform: uppercase; letter-spacing: .1em; }
+.board-heading { display: grid; grid-template-columns: minmax(0, 1fr) minmax(330px, 390px); align-items: center; gap: 2rem; padding-block: 1.4rem; }
+.board-heading h1 { margin-bottom: .35rem; font-size: clamp(2.65rem, 5vw, 4.4rem); }
+.board-heading > div > p { font-size: .95rem; line-height: 1.4; }
+.board-kicker { display: flex; align-items: center; gap: .55rem; margin-bottom: .45rem; color: var(--muted); font-size: .7rem; font-weight: 800; text-transform: uppercase; letter-spacing: .1em; }
 .board-kicker span { color: var(--copper); }
 .board-kicker i { width: 4px; height: 4px; border-radius: 50%; background: #9a9e98; }
-.live-controls { padding: 1.15rem; border: 1px solid var(--line); border-radius: 17px; background: rgba(255,253,248,.78); }
-.switch-row { padding: .7rem .2rem; display: flex; align-items: center; justify-content: space-between; gap: 1rem; cursor: pointer; }
-.switch-row + .switch-row { border-top: 1px solid #e4dfd5; }
+.live-controls { padding: .55rem; display: grid; grid-template-columns: 1fr 1fr; border: 1px solid var(--line); border-radius: 15px; background: rgba(255,253,248,.78); }
+.switch-row { padding: .5rem .6rem; display: flex; align-items: center; justify-content: space-between; gap: .65rem; cursor: pointer; }
+.switch-row + .switch-row { border-left: 1px solid #e4dfd5; }
 .switch-row span { display: grid; }
 .switch-row strong { font-size: .86rem; }
 .switch-row small { color: var(--muted); font-size: .72rem; }
 .switch-row input { width: 42px; height: 24px; accent-color: var(--green); }
-.live-controls .text-button { width: 100%; justify-content: center; border-top: 1px solid #e4dfd5; padding-top: 1rem; margin-top: .4rem; }
+.live-controls .text-button { width: 100%; grid-column: 1 / -1; justify-content: center; border-top: 1px solid #e4dfd5; padding: .65rem .4rem .25rem; margin-top: .25rem; }
 
-.board-content { display: grid; gap: 4rem; }
-.section-tools { display: flex; justify-content: flex-end; margin-bottom: -2.5rem; }
+.board-content { display: grid; gap: 2.5rem; }
+.section-tools { display: flex; justify-content: flex-end; margin: .35rem 0 -1.5rem; }
 .board-display-tools { display: flex; align-items: center; flex-wrap: wrap; justify-content: flex-end; gap: .55rem; }
 .board-size-control { min-height: 42px; display: flex; align-items: center; overflow: hidden; border: 1px solid var(--line); border-radius: 12px; background: var(--paper); }
 .board-size-control > span { padding-inline: .75rem .45rem; color: var(--muted); font-size: .72rem; font-weight: 800; }
@@ -451,7 +453,7 @@ h1, h2, h3 { font-family: "Manrope", sans-serif; letter-spacing: -0.035em; }
   .board-stats { display: grid; grid-template-columns: 1fr 1fr; gap: .6rem; }
   .board-topbar { align-items: start; padding-block: 1rem; }
   .board-toolbar .button-secondary, .board-toolbar .icon-button { display: none; }
-  .board-heading { padding-top: 2.5rem; }
+  .board-heading { padding-block: 1.15rem; }
   .post-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: .7rem; }
   .post-card-size-2, .post-card-size-3, .post-card-size-4 { grid-column: span 2; }
   .post-card-size-2 .post-image, .post-card-size-3 .post-image, .post-card-size-4 .post-image { aspect-ratio: 16 / 9; }
