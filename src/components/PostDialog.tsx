@@ -4,11 +4,12 @@ import { useAppState } from "../state/AppState";
 
 interface PostDialogProps {
   boardId: string;
+  initialSectionId?: string;
   open: boolean;
   onClose: () => void;
 }
 
-export function PostDialog({ boardId, open, onClose }: PostDialogProps) {
+export function PostDialog({ boardId, initialSectionId, open, onClose }: PostDialogProps) {
   const { addPost, sections } = useAppState();
   const availableSections = sections.filter((section) => section.boardId === boardId).sort((a, b) => a.sortOrder - b.sortOrder);
   const [caption, setCaption] = useState("");
@@ -23,10 +24,14 @@ export function PostDialog({ boardId, open, onClose }: PostDialogProps) {
   }, [preview]);
 
   useEffect(() => {
+    if (open && initialSectionId && availableSections.some((section) => section.id === initialSectionId)) {
+      setSectionId(initialSectionId);
+      return;
+    }
     if (!availableSections.some((section) => section.id === sectionId)) {
       setSectionId(availableSections[0]?.id || "");
     }
-  }, [availableSections, sectionId]);
+  }, [availableSections, initialSectionId, open, sectionId]);
 
   if (!open) return null;
 

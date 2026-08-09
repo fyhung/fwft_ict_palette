@@ -17,7 +17,7 @@ export function PresentPage() {
     <main className="present-page">
       <div className="present-nav">
         <Link to={`/c/${classId}/b/${boardId}`}><ArrowLeft /> Back to board</Link>
-        <button className="icon-button light" aria-label="Enter full screen"><Maximize2 /></button>
+        <button className="icon-button light" aria-label="Enter full screen" onClick={() => void document.documentElement.requestFullscreen?.()}><Maximize2 /></button>
       </div>
       <section className="present-card">
         <div className="present-copy">

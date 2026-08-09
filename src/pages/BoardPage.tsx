@@ -28,8 +28,11 @@ export function BoardPage() {
   const board = boards.find((item) => item.id === boardId);
   const classroom = classes.find((item) => item.id === classId);
   const [dialogOpen, setDialogOpen] = useState(false);
+  const [postSectionId, setPostSectionId] = useState<string>();
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [selectedPost, setSelectedPost] = useState<BoardPost>();
+  const [editSelectedPost, setEditSelectedPost] = useState(false);
+  const [copyLabel, setCopyLabel] = useState("Copy link");
   const requestedClass = useRef("");
   const boardSections = sections.filter((section) => section.boardId === boardId).sort((a, b) => a.sortOrder - b.sortOrder);
 
@@ -52,9 +55,16 @@ export function BoardPage() {
   if (!classroom && user && appRole) return <main className="page-shell"><div className="workspace-empty">Loading board...</div></main>;
   if (!board || !classroom) return <main className="page-shell"><h1>Board not found</h1></main>;
 
-  const openPostDialog = () => {
+  const openPostDialog = (sectionId?: string) => {
     if (!user) signIn();
+    setPostSectionId(sectionId);
     setDialogOpen(true);
+  };
+
+  const copyBoardLink = async () => {
+    await navigator.clipboard.writeText(window.location.href);
+    setCopyLabel("Copied!");
+    window.setTimeout(() => setCopyLabel("Copy link"), 1600);
   };
 
   return (
@@ -64,8 +74,8 @@ export function BoardPage() {
         {classroom.canManage && (
           <div className="board-toolbar">
             <Link className="button button-primary" to={`/c/${classId}/b/${boardId}/present`}><Presentation size={17} /> Present</Link>
-            <button className="button button-secondary"><QrCode size={17} /> QR</button>
-            <button className="button button-secondary" onClick={() => void navigator.clipboard.writeText(window.location.href)}><Copy size={17} /> Copy link</button>
+            <Link className="button button-secondary" to={`/c/${classId}/b/${boardId}/present`}><QrCode size={17} /> QR</Link>
+            <button className="button button-secondary" onClick={() => void copyBoardLink()}><Copy size={17} /> {copyLabel}</button>
             <button className="icon-button" aria-label="Board settings" onClick={() => setSettingsOpen(true)}><Settings size={18} /></button>
           </div>
         )}
@@ -99,7 +109,7 @@ export function BoardPage() {
               <header className={`photo-section-header ${classroom.canManage ? "" : "view-only"}`}>
                 {classroom.canManage && <span className="drag-handle" aria-hidden="true"><GripVertical /></span>}
                 <div><h2>{section.title}</h2><p>{section.note}</p></div>
-                <div className="section-header-actions"><span className="section-count">{sectionPosts.length} posts</span>{classroom.canManage && <>
+                <div className="section-header-actions"><span className="section-count">{sectionPosts.length} posts</span>{board.allowPosting && <button className="button section-add-photo" onClick={() => openPostDialog(section.id)}><ImagePlus size={16} /> Add photo</button>}{classroom.canManage && <>
                   <button className="mini-icon" title="Move up" onClick={() => void moveSection(section.id, -1)}><ChevronUp /></button>
                   <button className="mini-icon" title="Move down" onClick={() => void moveSection(section.id, 1)}><ChevronDown /></button>
                   <button className="mini-icon" title="Rename" onClick={() => { const title = window.prompt("Rename section", section.title)?.trim(); if (title) void renameSection(section.id, title); }}><Pencil /></button>
@@ -107,7 +117,7 @@ export function BoardPage() {
                 </>}</div>
               </header>
               {sectionPosts.length ? (
-                <div className="post-grid">{sectionPosts.map((post) => <PostCard post={{ ...post, commentCount: comments.filter((comment) => comment.postId === post.id).length }} key={post.id} onOpen={() => setSelectedPost(post)} />)}</div>
+                <div className="post-grid">{sectionPosts.map((post) => <PostCard post={{ ...post, commentCount: comments.filter((comment) => comment.postId === post.id).length }} key={post.id} onOpen={() => { setEditSelectedPost(false); setSelectedPost(post); }} onEdit={classroom.canManage ? () => { setEditSelectedPost(true); setSelectedPost(post); } : undefined} />)}</div>
               ) : (
                 <div className="empty-section">No photos in this section yet.</div>
               )}
@@ -117,12 +127,12 @@ export function BoardPage() {
         {boardSections.length === 0 && <div className="empty-section">This board has no sections yet.</div>}
       </div>
 
-      <button className="floating-post" onClick={openPostDialog} disabled={!board.allowPosting}>
+      <button className="floating-post" onClick={() => openPostDialog()} disabled={!board.allowPosting}>
         <ImagePlus size={20} /> {board.allowPosting ? "Add photo" : "Posting closed"}
       </button>
-      <PostDialog boardId={board.id} open={dialogOpen} onClose={() => setDialogOpen(false)} />
+      <PostDialog boardId={board.id} initialSectionId={postSectionId} open={dialogOpen} onClose={() => { setDialogOpen(false); setPostSectionId(undefined); }} />
       <BoardSettingsDialog board={board} open={settingsOpen} onClose={() => setSettingsOpen(false)} onDeleted={() => { window.location.hash = `#/c/${classId}`; }} />
-      {selectedPost && <PostDetailDialog post={posts.find((item) => item.id === selectedPost.id) || selectedPost} canManage={Boolean(classroom.canManage)} open onClose={() => setSelectedPost(undefined)} />}
+      {selectedPost && <PostDetailDialog post={posts.find((item) => item.id === selectedPost.id) || selectedPost} canManage={Boolean(classroom.canManage)} startEditing={editSelectedPost} open onClose={() => { setSelectedPost(undefined); setEditSelectedPost(false); }} />}
     </main>
   );
 }

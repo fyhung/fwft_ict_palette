@@ -1,7 +1,7 @@
-import { MessageCircle } from "lucide-react";
+import { MessageCircle, Pencil } from "lucide-react";
 import type { BoardPost } from "../types";
 
-export function PostCard({ post, onOpen }: { post: BoardPost; onOpen?: () => void }) {
+export function PostCard({ post, onOpen, onEdit }: { post: BoardPost; onOpen?: () => void; onEdit?: () => void }) {
   return (
     <article className="post-card" tabIndex={0} role="button" onClick={onOpen} onKeyDown={(event) => { if (event.key === "Enter" || event.key === " ") onOpen?.(); }}>
       <div className={`post-image ${post.visual}`}>
@@ -10,6 +10,7 @@ export function PostCard({ post, onOpen }: { post: BoardPost; onOpen?: () => voi
         ) : (
           <span className="visual-label" aria-hidden="true" />
         )}
+        {onEdit && <button className="post-card-edit" type="button" aria-label={`Edit ${post.caption}`} onClick={(event) => { event.stopPropagation(); onEdit(); }}><Pencil size={15} /> Edit</button>}
       </div>
       <div className="post-body">
         <p>{post.caption}</p>
