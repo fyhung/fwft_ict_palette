@@ -223,11 +223,27 @@ describe("student contributions", () => {
     await assertSucceeds(deleteDoc(postRef(ownDb)));
   });
 
-  test("student can create a comment as themselves but cannot delete comments", async () => {
+  test("student can create, edit and delete their own comment", async () => {
+    const db = env().authenticatedContext("student-b").firestore();
+    await assertSucceeds(setDoc(commentRef(db, "comment-b"), validComment("student-b")));
+    await assertFails(setDoc(commentRef(db, "comment-c"), validComment("student-a")));
+    await assertSucceeds(updateDoc(commentRef(db), { text: "Edited", updatedAt: serverTimestamp() }));
+    await assertFails(updateDoc(commentRef(db), { authorUid: "student-a" }));
+    await assertSucceeds(deleteDoc(commentRef(db)));
+  });
+
+  test("student cannot edit or delete another student's comment", async () => {
     const db = env().authenticatedContext("student-a").firestore();
-    await assertSucceeds(setDoc(commentRef(db, "comment-b"), validComment("student-a")));
-    await assertFails(setDoc(commentRef(db, "comment-c"), validComment("student-b")));
+    await assertFails(updateDoc(commentRef(db), { text: "Edited", updatedAt: serverTimestamp() }));
     await assertFails(deleteDoc(commentRef(db)));
+  });
+
+  test("post author can delete their post and its comments atomically", async () => {
+    const db = env().authenticatedContext("student-a").firestore();
+    const batch = writeBatch(db);
+    batch.delete(commentRef(db));
+    batch.delete(postRef(db));
+    await assertSucceeds(batch.commit());
   });
 
   test("student cannot comment when comments are closed", async () => {

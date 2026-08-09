@@ -8,11 +8,12 @@ import {
   onSnapshot,
   serverTimestamp,
   setDoc,
+  updateDoc,
   writeBatch,
   type DocumentData,
   type QueryDocumentSnapshot,
 } from "firebase/firestore";
-import type { AppRole, BoardPost, BoardSection, BoardSummary, Classroom, DemoUser, StaffCandidate } from "../types";
+import type { AppRole, BoardComment, BoardPost, BoardSection, BoardSummary, Classroom, DemoUser, StaffCandidate } from "../types";
 import { db } from "./client";
 
 export const APP_OWNER_EMAIL = "fyhung@twghfwfts.edu.hk";
@@ -339,6 +340,171 @@ export function subscribeBoardPosts(
     ),
     (error) => onError(error),
   );
+}
+
+export async function updateBoardSettings(
+  classId: string,
+  boardId: string,
+  input: Partial<Pick<BoardSummary, "title" | "description" | "allowPosting" | "allowComments">>,
+) {
+  if (!db) throw new Error("FIRESTORE_NOT_CONFIGURED");
+  await updateDoc(doc(db, "classes", classId, "boards", boardId), {
+    ...input,
+    updatedAt: serverTimestamp(),
+  });
+}
+
+export async function deleteBoardData(classId: string, boardId: string) {
+  if (!db) throw new Error("FIRESTORE_NOT_CONFIGURED");
+  const boardReference = doc(db, "classes", classId, "boards", boardId);
+  const [sectionsSnapshot, postsSnapshot, commentsSnapshot] = await Promise.all([
+    getDocs(collection(boardReference, "sections")),
+    getDocs(collection(boardReference, "posts")),
+    getDocs(collection(boardReference, "comments")),
+  ]);
+  const batch = writeBatch(db);
+  sectionsSnapshot.docs.forEach((item) => batch.delete(item.ref));
+  postsSnapshot.docs.forEach((item) => batch.delete(item.ref));
+  commentsSnapshot.docs.forEach((item) => batch.delete(item.ref));
+  batch.delete(boardReference);
+  await batch.commit();
+}
+
+export async function createBoardSection(classId: string, boardId: string, title: string, sortOrder: number) {
+  if (!db) throw new Error("FIRESTORE_NOT_CONFIGURED");
+  const reference = doc(collection(db, "classes", classId, "boards", boardId, "sections"));
+  await setDoc(reference, {
+    title,
+    note: "",
+    sortOrder,
+    createdAt: serverTimestamp(),
+    updatedAt: serverTimestamp(),
+  });
+  return { id: reference.id, boardId, title, note: "", sortOrder } satisfies BoardSection;
+}
+
+export async function renameBoardSection(classId: string, boardId: string, sectionId: string, title: string) {
+  if (!db) throw new Error("FIRESTORE_NOT_CONFIGURED");
+  await updateDoc(doc(db, "classes", classId, "boards", boardId, "sections", sectionId), {
+    title,
+    updatedAt: serverTimestamp(),
+  });
+}
+
+export async function deleteBoardSection(classId: string, boardId: string, sectionId: string) {
+  if (!db) throw new Error("FIRESTORE_NOT_CONFIGURED");
+  await deleteDoc(doc(db, "classes", classId, "boards", boardId, "sections", sectionId));
+}
+
+export async function reorderBoardSections(classId: string, boardId: string, sectionIds: string[]) {
+  if (!db) throw new Error("FIRESTORE_NOT_CONFIGURED");
+  const database = db;
+  const batch = writeBatch(database);
+  sectionIds.forEach((sectionId, sortOrder) => batch.update(
+    doc(database, "classes", classId, "boards", boardId, "sections", sectionId),
+    { sortOrder, updatedAt: serverTimestamp() },
+  ));
+  await batch.commit();
+}
+
+export async function updateBoardPost(
+  classId: string,
+  boardId: string,
+  postId: string,
+  input: { caption: string; sectionId: string },
+) {
+  if (!db) throw new Error("FIRESTORE_NOT_CONFIGURED");
+  await updateDoc(doc(db, "classes", classId, "boards", boardId, "posts", postId), {
+    caption: input.caption,
+    sectionId: input.sectionId,
+    updatedAt: serverTimestamp(),
+  });
+}
+
+export async function deleteBoardPostData(classId: string, boardId: string, postId: string) {
+  if (!db) throw new Error("FIRESTORE_NOT_CONFIGURED");
+  const commentsSnapshot = await getDocs(collection(db, "classes", classId, "boards", boardId, "comments"));
+  const batch = writeBatch(db);
+  commentsSnapshot.docs.filter((item) => item.data().postId === postId).forEach((item) => batch.delete(item.ref));
+  batch.delete(doc(db, "classes", classId, "boards", boardId, "posts", postId));
+  await batch.commit();
+}
+
+function commentFromSnapshot(boardId: string, snapshot: QueryDocumentSnapshot<DocumentData>): BoardComment {
+  const data = snapshot.data();
+  const authorName = String(data.authorName || "Student");
+  return {
+    id: snapshot.id,
+    boardId,
+    postId: String(data.postId || ""),
+    authorUid: String(data.authorUid || ""),
+    authorName,
+    authorInitials: initialsFromName(authorName),
+    text: String(data.text || ""),
+    mainImageUrl: data.mainImageUrl ? String(data.mainImageUrl) : undefined,
+    thumbImageUrl: data.thumbImageUrl ? String(data.thumbImageUrl) : undefined,
+    mainFileId: data.mainFileId ? String(data.mainFileId) : undefined,
+    thumbFileId: data.thumbFileId ? String(data.thumbFileId) : undefined,
+    imageBytes: Number(data.imageBytes || 0),
+    thumbBytes: Number(data.thumbBytes || 0),
+    createdLabel: "Just now",
+  };
+}
+
+export function reserveCommentId(classId: string, boardId: string) {
+  if (!db) throw new Error("FIRESTORE_NOT_CONFIGURED");
+  return doc(collection(db, "classes", classId, "boards", boardId, "comments")).id;
+}
+
+export async function createBoardComment(
+  classId: string,
+  boardId: string,
+  commentId: string,
+  user: DemoUser,
+  input: Omit<BoardComment, "id" | "boardId" | "authorUid" | "authorName" | "authorInitials" | "createdLabel">,
+) {
+  if (!db) throw new Error("FIRESTORE_NOT_CONFIGURED");
+  const payload = {
+    postId: input.postId,
+    authorUid: user.uid,
+    authorName: user.displayName,
+    authorPhotoURL: user.photoURL || "",
+    text: input.text,
+    mainFileId: input.mainFileId || null,
+    thumbFileId: input.thumbFileId || null,
+    mainImageUrl: input.mainImageUrl || null,
+    thumbImageUrl: input.thumbImageUrl || null,
+    imageBytes: input.imageBytes || 0,
+    thumbBytes: input.thumbBytes || 0,
+    createdAt: serverTimestamp(),
+    updatedAt: serverTimestamp(),
+  };
+  await setDoc(doc(db, "classes", classId, "boards", boardId, "comments", commentId), payload);
+}
+
+export function subscribeBoardComments(
+  classId: string,
+  boardId: string,
+  onData: (comments: BoardComment[]) => void,
+  onError: (error: Error) => void,
+) {
+  if (!db) throw new Error("FIRESTORE_NOT_CONFIGURED");
+  return onSnapshot(collection(db, "classes", classId, "boards", boardId, "comments"), (snapshot) => {
+    onData(snapshot.docs.map((item) => commentFromSnapshot(boardId, item)));
+  }, onError);
+}
+
+export async function updateBoardComment(classId: string, boardId: string, commentId: string, text: string) {
+  if (!db) throw new Error("FIRESTORE_NOT_CONFIGURED");
+  await updateDoc(doc(db, "classes", classId, "boards", boardId, "comments", commentId), {
+    text,
+    updatedAt: serverTimestamp(),
+  });
+}
+
+export async function deleteBoardCommentData(classId: string, boardId: string, commentId: string) {
+  if (!db) throw new Error("FIRESTORE_NOT_CONFIGURED");
+  await deleteDoc(doc(db, "classes", classId, "boards", boardId, "comments", commentId));
 }
 
 export async function deleteEmptyManagedClass(classId: string) {

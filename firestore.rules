@@ -124,8 +124,19 @@ service cloud.firestore {
             && request.resource.data.text.size() <= 500
             && request.resource.data.postId is string
             && exists(/databases/$(database)/documents/classes/$(classId)/boards/$(boardId)/posts/$(request.resource.data.postId));
-          allow update: if false;
-          allow delete: if canManageClass(classId);
+          allow update: if canManageClass(classId)
+            || (signedIn()
+              && resource.data.authorUid == request.auth.uid
+              && request.resource.data.authorUid == resource.data.authorUid
+              && request.resource.data.postId == resource.data.postId
+              && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['text', 'updatedAt'])
+              && request.resource.data.text is string
+              && request.resource.data.text.size() <= 500);
+          allow delete: if canManageClass(classId)
+            || (signedIn() && resource.data.authorUid == request.auth.uid)
+            || (signedIn()
+              && !existsAfter(/databases/$(database)/documents/classes/$(classId)/boards/$(boardId)/posts/$(resource.data.postId))
+              && get(/databases/$(database)/documents/classes/$(classId)/boards/$(boardId)/posts/$(resource.data.postId)).data.authorUid == request.auth.uid);
         }
       }
     }

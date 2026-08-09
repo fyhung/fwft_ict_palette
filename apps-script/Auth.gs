@@ -24,6 +24,33 @@ function enforceRateLimit_(uid) {
   cache.put(key, String(count), 90);
 }
 
+function isClassManager_(user, idToken, classId) {
+  if (String(user.email || '').toLowerCase() === 'fyhung@twghfwfts.edu.hk') return true;
+  const projectId = requiredProperty_('FIREBASE_PROJECT_ID');
+  const url = 'https://firestore.googleapis.com/v1/projects/' + encodeURIComponent(projectId)
+    + '/databases/(default)/documents/classes/' + encodeURIComponent(classId);
+  const response = UrlFetchApp.fetch(url, {
+    method: 'get',
+    headers: { Authorization: 'Bearer ' + idToken },
+    muteHttpExceptions: true
+  });
+  if (response.getResponseCode() !== 200) return false;
+  const fields = JSON.parse(response.getContentText()).fields || {};
+  return fields.ownerUid && fields.ownerUid.stringValue === user.uid;
+}
+
+function isPostOwner_(user, idToken, classId, boardId, postId) {
+  const projectId = requiredProperty_('FIREBASE_PROJECT_ID');
+  const path = '/databases/(default)/documents/classes/' + encodeURIComponent(classId)
+    + '/boards/' + encodeURIComponent(boardId) + '/posts/' + encodeURIComponent(postId);
+  const response = UrlFetchApp.fetch('https://firestore.googleapis.com/v1/projects/' + encodeURIComponent(projectId) + path, {
+    method: 'get', headers: { Authorization: 'Bearer ' + idToken }, muteHttpExceptions: true
+  });
+  if (response.getResponseCode() !== 200) return false;
+  const fields = JSON.parse(response.getContentText()).fields || {};
+  return fields.authorUid && fields.authorUid.stringValue === user.uid;
+}
+
 function requiredProperty_(name) {
   const value = PropertiesService.getScriptProperties().getProperty(name);
   if (!value) throw appError_('CONFIG_MISSING', name + ' is not configured.');

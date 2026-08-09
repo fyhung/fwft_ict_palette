@@ -2,24 +2,34 @@ import {
   ArrowLeft,
   BarChart3,
   Copy,
+  ChevronDown,
+  ChevronUp,
   GripVertical,
   ImagePlus,
   Presentation,
   QrCode,
   Settings,
+  Pencil,
+  Plus,
+  Trash2,
 } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import { Link, useParams } from "react-router-dom";
 import { PostCard } from "../components/PostCard";
 import { PostDialog } from "../components/PostDialog";
+import { BoardSettingsDialog } from "../components/BoardSettingsDialog";
+import { PostDetailDialog } from "../components/PostDetailDialog";
+import type { BoardPost } from "../types";
 import { useAppState } from "../state/AppState";
 
 export function BoardPage() {
   const { classId = "", boardId = "" } = useParams();
-  const { appRole, classes, boards, sections, posts, toggleBoardSetting, user, signIn, ensureClassLoaded, watchBoardPosts } = useAppState();
+  const { appRole, classes, boards, sections, posts, comments, toggleBoardSetting, user, signIn, ensureClassLoaded, watchBoardPosts, watchBoardComments, addSection, renameSection, deleteSection, moveSection } = useAppState();
   const board = boards.find((item) => item.id === boardId);
   const classroom = classes.find((item) => item.id === classId);
   const [dialogOpen, setDialogOpen] = useState(false);
+  const [settingsOpen, setSettingsOpen] = useState(false);
+  const [selectedPost, setSelectedPost] = useState<BoardPost>();
   const requestedClass = useRef("");
   const boardSections = sections.filter((section) => section.boardId === boardId).sort((a, b) => a.sortOrder - b.sortOrder);
 
@@ -33,6 +43,11 @@ export function BoardPage() {
     if (!user || !board) return;
     return watchBoardPosts(classId, boardId);
   }, [board, boardId, classId, user, watchBoardPosts]);
+
+  useEffect(() => {
+    if (!user || !board) return;
+    return watchBoardComments(classId, boardId);
+  }, [board, boardId, classId, user, watchBoardComments]);
 
   if (!classroom && user && appRole) return <main className="page-shell"><div className="workspace-empty">Loading board...</div></main>;
   if (!board || !classroom) return <main className="page-shell"><h1>Board not found</h1></main>;
@@ -50,8 +65,8 @@ export function BoardPage() {
           <div className="board-toolbar">
             <Link className="button button-primary" to={`/c/${classId}/b/${boardId}/present`}><Presentation size={17} /> Present</Link>
             <button className="button button-secondary"><QrCode size={17} /> QR</button>
-            <button className="button button-secondary"><Copy size={17} /> Copy link</button>
-            <button className="icon-button" aria-label="Board settings"><Settings size={18} /></button>
+            <button className="button button-secondary" onClick={() => void navigator.clipboard.writeText(window.location.href)}><Copy size={17} /> Copy link</button>
+            <button className="icon-button" aria-label="Board settings" onClick={() => setSettingsOpen(true)}><Settings size={18} /></button>
           </div>
         )}
       </div>
@@ -65,17 +80,18 @@ export function BoardPage() {
         {classroom.canManage && <div className="live-controls">
           <label className="switch-row">
             <span><strong>Posting</strong><small>Student photo submissions</small></span>
-            <input type="checkbox" checked={board.allowPosting} onChange={() => toggleBoardSetting(board.id, "allowPosting")} />
+            <input type="checkbox" checked={board.allowPosting} onChange={() => void toggleBoardSetting(board.id, "allowPosting")} />
           </label>
           <label className="switch-row">
             <span><strong>Comments</strong><small>Text and image replies</small></span>
-            <input type="checkbox" checked={board.allowComments} onChange={() => toggleBoardSetting(board.id, "allowComments")} />
+            <input type="checkbox" checked={board.allowComments} onChange={() => void toggleBoardSetting(board.id, "allowComments")} />
           </label>
           <button className="text-button"><BarChart3 size={16} /> View activity</button>
         </div>}
       </section>
 
       <div className="board-content page-shell">
+        {classroom.canManage && <div className="section-tools"><button className="button button-secondary" onClick={() => { const title = window.prompt("New section name", `Section ${boardSections.length + 1}`)?.trim(); if (title) void addSection(board.id, title); }}><Plus size={17} /> New section</button></div>}
         {boardSections.map((section) => {
           const sectionPosts = posts.filter((post) => post.boardId === boardId && post.sectionId === section.id);
           return (
@@ -83,10 +99,15 @@ export function BoardPage() {
               <header className={`photo-section-header ${classroom.canManage ? "" : "view-only"}`}>
                 {classroom.canManage && <span className="drag-handle" aria-hidden="true"><GripVertical /></span>}
                 <div><h2>{section.title}</h2><p>{section.note}</p></div>
-                <span className="section-count">{sectionPosts.length} posts</span>
+                <div className="section-header-actions"><span className="section-count">{sectionPosts.length} posts</span>{classroom.canManage && <>
+                  <button className="mini-icon" title="Move up" onClick={() => void moveSection(section.id, -1)}><ChevronUp /></button>
+                  <button className="mini-icon" title="Move down" onClick={() => void moveSection(section.id, 1)}><ChevronDown /></button>
+                  <button className="mini-icon" title="Rename" onClick={() => { const title = window.prompt("Rename section", section.title)?.trim(); if (title) void renameSection(section.id, title); }}><Pencil /></button>
+                  <button className="mini-icon danger-text" title="Delete empty section" onClick={() => { if (window.confirm(`Delete empty section “${section.title}”?`)) void deleteSection(section.id).catch((error) => window.alert(error instanceof Error && error.message === "SECTION_NOT_EMPTY" ? "Move or delete its posts first." : error)); }}><Trash2 /></button>
+                </>}</div>
               </header>
               {sectionPosts.length ? (
-                <div className="post-grid">{sectionPosts.map((post) => <PostCard post={post} key={post.id} />)}</div>
+                <div className="post-grid">{sectionPosts.map((post) => <PostCard post={{ ...post, commentCount: comments.filter((comment) => comment.postId === post.id).length }} key={post.id} onOpen={() => setSelectedPost(post)} />)}</div>
               ) : (
                 <div className="empty-section">No photos in this section yet.</div>
               )}
@@ -100,6 +121,8 @@ export function BoardPage() {
         <ImagePlus size={20} /> {board.allowPosting ? "Add photo" : "Posting closed"}
       </button>
       <PostDialog boardId={board.id} open={dialogOpen} onClose={() => setDialogOpen(false)} />
+      <BoardSettingsDialog board={board} open={settingsOpen} onClose={() => setSettingsOpen(false)} onDeleted={() => { window.location.hash = `#/c/${classId}`; }} />
+      {selectedPost && <PostDetailDialog post={posts.find((item) => item.id === selectedPost.id) || selectedPost} canManage={Boolean(classroom.canManage)} open onClose={() => setSelectedPost(undefined)} />}
     </main>
   );
 }

@@ -1,4 +1,4 @@
-const APP_VERSION = '0.2.0-posts';
+const APP_VERSION = '0.3.0-management';
 
 function doGet(e) {
   const action = e && e.parameter ? e.parameter.action : '';
@@ -13,6 +13,10 @@ function doPost(e) {
     if (body.action === 'deleteProbe') return json_({ ok: true, data: deleteProbe_(body) });
     if (body.action === 'uploadPostImage') return json_({ ok: true, data: uploadPostImage_(body) });
     if (body.action === 'deletePostFiles') return json_({ ok: true, data: deletePostFiles_(body) });
+    if (body.action === 'deletePostTreeFiles') return json_({ ok: true, data: deletePostTreeFiles_(body) });
+    if (body.action === 'uploadCommentImage') return json_({ ok: true, data: uploadCommentImage_(body) });
+    if (body.action === 'deleteCommentFiles') return json_({ ok: true, data: deleteCommentFiles_(body) });
+    if (body.action === 'deleteBoardFiles') return json_({ ok: true, data: deleteBoardFiles_(body) });
     return jsonError_('INVALID_ACTION', 'Unknown action.');
   } catch (error) {
     console.error(error && error.stack ? error.stack : error);

@@ -56,6 +56,23 @@ export interface BoardPost {
   commentCount: number;
 }
 
+export interface BoardComment {
+  id: string;
+  boardId: string;
+  postId: string;
+  authorUid: string;
+  authorName: string;
+  authorInitials: string;
+  text: string;
+  mainImageUrl?: string;
+  thumbImageUrl?: string;
+  mainFileId?: string;
+  thumbFileId?: string;
+  imageBytes?: number;
+  thumbBytes?: number;
+  createdLabel: string;
+}
+
 export interface DemoUser {
   uid: string;
   displayName: string;

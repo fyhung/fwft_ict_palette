@@ -12,6 +12,12 @@ export interface PostUploadResult {
   thumbnail: ProbeUploadResult["thumbnail"];
 }
 
+export interface CommentUploadResult {
+  commentId: string;
+  main: ProbeUploadResult["main"];
+  thumbnail: ProbeUploadResult["thumbnail"];
+}
+
 async function blobToBase64(blob: Blob) {
   const bytes = new Uint8Array(await blob.arrayBuffer());
   let binary = "";
@@ -108,6 +114,73 @@ export async function deletePostFiles(
   const payload = await response.json();
   if (!payload.ok) throw new Error(payload.error?.code ?? "APPS_SCRIPT_ERROR");
   return payload.data as { postId: string; deleted: number };
+}
+
+export async function uploadCommentImage(
+  idToken: string,
+  classId: string,
+  boardId: string,
+  postId: string,
+  commentId: string,
+  main: Blob,
+  thumbnail: Blob,
+): Promise<CommentUploadResult> {
+  if (!endpoint) throw new Error("APPS_SCRIPT_NOT_CONFIGURED");
+  const response = await fetch(endpoint, {
+    method: "POST",
+    redirect: "follow",
+    headers: { "Content-Type": "text/plain;charset=utf-8" },
+    body: JSON.stringify({
+      action: "uploadCommentImage", idToken, classId, boardId, postId, commentId,
+      main: { mimeType: main.type, base64: await blobToBase64(main) },
+      thumbnail: { mimeType: thumbnail.type, base64: await blobToBase64(thumbnail) },
+    }),
+  });
+  if (!response.ok) throw new Error(`APPS_SCRIPT_HTTP_${response.status}`);
+  const payload = await response.json();
+  if (!payload.ok) throw new Error(payload.error?.code ?? "APPS_SCRIPT_ERROR");
+  return payload.data as CommentUploadResult;
+}
+
+export async function deletePostTreeFiles(idToken: string, classId: string, boardId: string, postId: string, fileIds: string[]) {
+  if (!endpoint) throw new Error("APPS_SCRIPT_NOT_CONFIGURED");
+  const response = await fetch(endpoint, {
+    method: "POST", redirect: "follow", headers: { "Content-Type": "text/plain;charset=utf-8" },
+    body: JSON.stringify({ action: "deletePostTreeFiles", idToken, classId, boardId, postId, fileIds }),
+  });
+  if (!response.ok) throw new Error(`APPS_SCRIPT_HTTP_${response.status}`);
+  const payload = await response.json();
+  if (!payload.ok) throw new Error(payload.error?.code ?? "APPS_SCRIPT_ERROR");
+}
+
+export async function deleteCommentFiles(
+  idToken: string,
+  classId: string,
+  boardId: string,
+  commentId: string,
+  fileIds: string[],
+) {
+  if (!endpoint) throw new Error("APPS_SCRIPT_NOT_CONFIGURED");
+  const response = await fetch(endpoint, {
+    method: "POST", redirect: "follow",
+    headers: { "Content-Type": "text/plain;charset=utf-8" },
+    body: JSON.stringify({ action: "deleteCommentFiles", idToken, classId, boardId, commentId, fileIds }),
+  });
+  if (!response.ok) throw new Error(`APPS_SCRIPT_HTTP_${response.status}`);
+  const payload = await response.json();
+  if (!payload.ok) throw new Error(payload.error?.code ?? "APPS_SCRIPT_ERROR");
+}
+
+export async function deleteBoardFiles(idToken: string, classId: string, boardId: string) {
+  if (!endpoint) throw new Error("APPS_SCRIPT_NOT_CONFIGURED");
+  const response = await fetch(endpoint, {
+    method: "POST", redirect: "follow",
+    headers: { "Content-Type": "text/plain;charset=utf-8" },
+    body: JSON.stringify({ action: "deleteBoardFiles", idToken, classId, boardId }),
+  });
+  if (!response.ok) throw new Error(`APPS_SCRIPT_HTTP_${response.status}`);
+  const payload = await response.json();
+  if (!payload.ok) throw new Error(payload.error?.code ?? "APPS_SCRIPT_ERROR");
 }
 
 export async function deleteProbe(

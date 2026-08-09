@@ -87,13 +87,96 @@ function deletePostFiles_(body) {
       || ['post-main', 'post-thumb'].indexOf(metadata.kind) === -1) {
       throw appError_('FILE_NOT_APP_FILE', 'File metadata does not match the post.');
     }
-    if (metadata.ownerUid !== user.uid) throw appError_('FILE_NOT_OWNED', 'You do not own this file.');
+    if (metadata.ownerUid !== user.uid && !isClassManager_(user, body.idToken, classId)) {
+      throw appError_('FILE_NOT_OWNED', 'You do not own this file.');
+    }
     if (!isUnderRoot_(file.getId(), requiredProperty_('DRIVE_ROOT_FOLDER_ID'))) {
       throw appError_('FILE_OUTSIDE_ROOT', 'The file is outside the application media folder.');
     }
     file.setTrashed(true);
   });
   return { postId: postId, deleted: fileIds.length };
+}
+
+function uploadCommentImage_(body) {
+  const user = verifyFirebaseToken_(body.idToken);
+  enforceRateLimit_(user.uid);
+  const classId = validId_(body.classId, 'classId');
+  const boardId = validId_(body.boardId, 'boardId');
+  const commentId = validId_(body.commentId, 'commentId');
+  const postId = validId_(body.postId, 'postId');
+  const root = DriveApp.getFolderById(requiredProperty_('DRIVE_ROOT_FOLDER_ID'));
+  const folder = getOrCreateFolder_(getOrCreateFolder_(getOrCreateFolder_(
+    getOrCreateFolder_(getOrCreateFolder_(root, 'classes'), classId), boardId), 'comments'), commentId);
+  const metadata = { app: 'classroom-image-board', version: APP_VERSION, classId: classId,
+    boardId: boardId, contentId: commentId, postId: postId, ownerUid: user.uid };
+  const main = createImageFile_(folder, body.main, 'image.webp', MAIN_LIMIT_BYTES_, Object.assign({}, metadata, { kind: 'comment-main' }));
+  const thumbnail = createImageFile_(folder, body.thumbnail, 'thumb.webp', THUMB_LIMIT_BYTES_, Object.assign({}, metadata, { kind: 'comment-thumb' }));
+  return { commentId: commentId, main: driveMetadata_(main.getId()), thumbnail: driveMetadata_(thumbnail.getId()) };
+}
+
+function deletePostTreeFiles_(body) {
+  const user = verifyFirebaseToken_(body.idToken);
+  const classId = validId_(body.classId, 'classId');
+  const boardId = validId_(body.boardId, 'boardId');
+  const postId = validId_(body.postId, 'postId');
+  if (!isClassManager_(user, body.idToken, classId) && !isPostOwner_(user, body.idToken, classId, boardId, postId)) {
+    throw appError_('FILE_NOT_OWNED', 'You do not own this post.');
+  }
+  const fileIds = Array.isArray(body.fileIds) ? body.fileIds : [];
+  fileIds.forEach(function(fileId) {
+    const file = DriveApp.getFileById(validDriveId_(fileId));
+    let metadata;
+    try { metadata = JSON.parse(file.getDescription() || '{}'); }
+    catch (error) { throw appError_('FILE_NOT_APP_FILE', 'File metadata is invalid.'); }
+    const isPostFile = ['post-main', 'post-thumb'].indexOf(metadata.kind) !== -1 && metadata.contentId === postId;
+    const isCommentFile = ['comment-main', 'comment-thumb'].indexOf(metadata.kind) !== -1 && metadata.postId === postId;
+    if (metadata.app !== 'classroom-image-board' || metadata.classId !== classId || metadata.boardId !== boardId
+      || (!isPostFile && !isCommentFile)) throw appError_('FILE_NOT_APP_FILE', 'File does not belong to this post.');
+    if (!isUnderRoot_(file.getId(), requiredProperty_('DRIVE_ROOT_FOLDER_ID'))) throw appError_('FILE_OUTSIDE_ROOT', 'File is outside the media folder.');
+    file.setTrashed(true);
+  });
+  return { postId: postId, deleted: fileIds.length };
+}
+
+function deleteCommentFiles_(body) {
+  const user = verifyFirebaseToken_(body.idToken);
+  const classId = validId_(body.classId, 'classId');
+  const boardId = validId_(body.boardId, 'boardId');
+  const commentId = validId_(body.commentId, 'commentId');
+  const manager = isClassManager_(user, body.idToken, classId);
+  const fileIds = Array.isArray(body.fileIds) ? body.fileIds : [];
+  fileIds.forEach(function(fileId) {
+    const file = DriveApp.getFileById(validDriveId_(fileId));
+    let metadata;
+    try { metadata = JSON.parse(file.getDescription() || '{}'); }
+    catch (error) { throw appError_('FILE_NOT_APP_FILE', 'File metadata is invalid.'); }
+    if (metadata.app !== 'classroom-image-board' || metadata.classId !== classId
+      || metadata.boardId !== boardId || metadata.contentId !== commentId
+      || ['comment-main', 'comment-thumb'].indexOf(metadata.kind) === -1) {
+      throw appError_('FILE_NOT_APP_FILE', 'File metadata does not match the comment.');
+    }
+    if (metadata.ownerUid !== user.uid && !manager) throw appError_('FILE_NOT_OWNED', 'You do not own this file.');
+    if (!isUnderRoot_(file.getId(), requiredProperty_('DRIVE_ROOT_FOLDER_ID'))) throw appError_('FILE_OUTSIDE_ROOT', 'File is outside the media folder.');
+    file.setTrashed(true);
+  });
+  return { commentId: commentId, deleted: fileIds.length };
+}
+
+function deleteBoardFiles_(body) {
+  const user = verifyFirebaseToken_(body.idToken);
+  const classId = validId_(body.classId, 'classId');
+  const boardId = validId_(body.boardId, 'boardId');
+  if (!isClassManager_(user, body.idToken, classId)) throw appError_('NOT_TEACHER', 'Class management permission is required.');
+  const root = DriveApp.getFolderById(requiredProperty_('DRIVE_ROOT_FOLDER_ID'));
+  const classes = root.getFoldersByName('classes');
+  if (!classes.hasNext()) return { boardId: boardId, deleted: false };
+  const classFolders = classes.next().getFoldersByName(classId);
+  if (!classFolders.hasNext()) return { boardId: boardId, deleted: false };
+  const boards = classFolders.next().getFoldersByName(boardId);
+  if (!boards.hasNext()) return { boardId: boardId, deleted: false };
+  boards.next().setTrashed(true);
+  return { boardId: boardId, deleted: true };
 }
 
 function createImageFile_(folder, input, filename, byteLimit, metadata) {

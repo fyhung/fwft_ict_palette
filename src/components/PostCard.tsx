@@ -1,9 +1,9 @@
 import { MessageCircle } from "lucide-react";
 import type { BoardPost } from "../types";
 
-export function PostCard({ post }: { post: BoardPost }) {
+export function PostCard({ post, onOpen }: { post: BoardPost; onOpen?: () => void }) {
   return (
-    <article className="post-card" tabIndex={0}>
+    <article className="post-card" tabIndex={0} role="button" onClick={onOpen} onKeyDown={(event) => { if (event.key === "Enter" || event.key === " ") onOpen?.(); }}>
       <div className={`post-image ${post.visual}`}>
         {post.imageUrl ? (
           <img src={post.imageUrl} alt={post.caption} />

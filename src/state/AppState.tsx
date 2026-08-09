@@ -19,22 +19,35 @@ import { boards as seedBoards, classrooms as seedClasses, initialPosts, sections
 import { firebaseConfigured } from "../firebase/config";
 import { auth } from "../firebase/client";
 import {
+  createBoardComment,
+  createBoardSection,
   createOwnedClass,
   createBoardPost,
   createClassBoard,
+  deleteBoardCommentData,
+  deleteBoardData,
+  deleteBoardPostData,
+  deleteBoardSection,
   deleteEmptyManagedClass,
   listStaffCandidates,
   loadClassWorkspace,
   reservePostId,
+  reserveCommentId,
+  renameBoardSection,
+  reorderBoardSections,
   setTeacherApproval,
   subscribeApplicationRole,
   subscribeBoardPosts,
+  subscribeBoardComments,
   subscribeTeacherWorkspace,
   upsertUserProfile,
+  updateBoardComment,
+  updateBoardPost,
+  updateBoardSettings,
 } from "../firebase/workspace";
-import { deletePostFiles, driveMediaUrl, uploadPostImage } from "../services/appsScriptApi";
+import { deleteBoardFiles, deleteCommentFiles, deletePostFiles, deletePostTreeFiles, driveMediaUrl, uploadCommentImage, uploadPostImage } from "../services/appsScriptApi";
 import { processImage } from "../services/imageProcessor";
-import type { AppRole, BoardPost, BoardSection, BoardSummary, Classroom, DemoUser, StaffCandidate } from "../types";
+import type { AppRole, BoardComment, BoardPost, BoardSection, BoardSummary, Classroom, DemoUser, StaffCandidate } from "../types";
 
 interface NewPostInput {
   boardId: string;
@@ -55,6 +68,7 @@ interface AppStateValue {
   boards: BoardSummary[];
   sections: BoardSection[];
   posts: BoardPost[];
+  comments: BoardComment[];
   signIn: () => Promise<void>;
   signOut: () => Promise<void>;
   getIdToken: () => Promise<string>;
@@ -67,9 +81,21 @@ interface AppStateValue {
   toggleBoardSetting: (
     boardId: string,
     setting: "allowPosting" | "allowComments",
-  ) => void;
+  ) => Promise<void>;
+  updateBoard: (boardId: string, input: { title: string; description: string }) => Promise<void>;
+  deleteBoard: (boardId: string) => Promise<void>;
+  addSection: (boardId: string, title: string) => Promise<void>;
+  renameSection: (sectionId: string, title: string) => Promise<void>;
+  deleteSection: (sectionId: string) => Promise<void>;
+  moveSection: (sectionId: string, direction: -1 | 1) => Promise<void>;
   addPost: (input: NewPostInput) => Promise<void>;
+  updatePost: (postId: string, input: { caption: string; sectionId: string }) => Promise<void>;
+  deletePost: (postId: string) => Promise<void>;
   watchBoardPosts: (classId: string, boardId: string) => () => void;
+  watchBoardComments: (classId: string, boardId: string) => () => void;
+  addComment: (boardId: string, postId: string, text: string, file?: File) => Promise<void>;
+  updateComment: (commentId: string, text: string) => Promise<void>;
+  deleteComment: (commentId: string) => Promise<void>;
 }
 
 const AppStateContext = createContext<AppStateValue | null>(null);
@@ -138,6 +164,7 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
   const [boards, setBoards] = useState(firebaseConfigured ? [] : seedBoards);
   const [sections, setSections] = useState(firebaseConfigured ? [] : seedSections);
   const [posts, setPosts] = useState(firebaseConfigured ? [] : initialPosts);
+  const [comments, setComments] = useState<BoardComment[]>([]);
 
   useEffect(() => {
     if (!auth) {
@@ -177,6 +204,7 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
           setBoards([]);
           setSections([]);
           setPosts([]);
+          setComments([]);
           setAppRole(null);
           setDataLoading(false);
           setDataError(null);
@@ -250,6 +278,13 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
     );
   }, []);
 
+  const watchBoardComments = useCallback((classId: string, boardId: string) => {
+    if (!firebaseConfigured) return () => {};
+    return subscribeBoardComments(classId, boardId, (nextComments) => {
+      setComments((current) => [...current.filter((item) => item.boardId !== boardId), ...nextComments]);
+    }, (error) => setDataError(error.message));
+  }, []);
+
   const value = useMemo<AppStateValue>(
     () => ({
       user,
@@ -263,7 +298,9 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
       boards,
       sections,
       posts,
+      comments,
       watchBoardPosts,
+      watchBoardComments,
       signIn: async () => {
         setAuthError(null);
         if (!auth) {
@@ -369,14 +406,76 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
         if (!user || appRole !== "owner") throw new Error("OWNER_REQUIRED");
         await setTeacherApproval(candidate, approved, user.uid);
       },
-      toggleBoardSetting: (boardId, setting) => {
+      toggleBoardSetting: async (boardId, setting) => {
+        const board = boards.find((item) => item.id === boardId);
+        if (!board) throw new Error("BOARD_NOT_FOUND");
+        const nextValue = !board[setting];
+        if (firebaseConfigured) await updateBoardSettings(board.classId, boardId, { [setting]: nextValue });
         setBoards((current) =>
           current.map((board) =>
             board.id === boardId
-              ? { ...board, [setting]: !board[setting] }
+              ? { ...board, [setting]: nextValue }
               : board,
           ),
         );
+      },
+      updateBoard: async (boardId, input) => {
+        const board = boards.find((item) => item.id === boardId);
+        if (!board) throw new Error("BOARD_NOT_FOUND");
+        if (firebaseConfigured) await updateBoardSettings(board.classId, boardId, input);
+        setBoards((current) => current.map((item) => item.id === boardId ? { ...item, ...input } : item));
+      },
+      deleteBoard: async (boardId) => {
+        const board = boards.find((item) => item.id === boardId);
+        if (!board) throw new Error("BOARD_NOT_FOUND");
+        if (firebaseConfigured) {
+          if (!auth?.currentUser) throw new Error("AUTH_REQUIRED");
+          const token = await auth.currentUser.getIdToken();
+          await deleteBoardFiles(token, board.classId, boardId);
+          await deleteBoardData(board.classId, boardId);
+        }
+        setBoards((current) => current.filter((item) => item.id !== boardId));
+        setSections((current) => current.filter((item) => item.boardId !== boardId));
+        setPosts((current) => current.filter((item) => item.boardId !== boardId));
+        setComments((current) => current.filter((item) => item.boardId !== boardId));
+      },
+      addSection: async (boardId, title) => {
+        const board = boards.find((item) => item.id === boardId);
+        if (!board) throw new Error("BOARD_NOT_FOUND");
+        const boardSections = sections.filter((item) => item.boardId === boardId);
+        const section = firebaseConfigured
+          ? await createBoardSection(board.classId, boardId, title, boardSections.length)
+          : { id: `section-${crypto.randomUUID()}`, boardId, title, note: "", sortOrder: boardSections.length };
+        setSections((current) => [...current, section]);
+      },
+      renameSection: async (sectionId, title) => {
+        const section = sections.find((item) => item.id === sectionId);
+        const board = section && boards.find((item) => item.id === section.boardId);
+        if (!section || !board) throw new Error("SECTION_NOT_FOUND");
+        if (firebaseConfigured) await renameBoardSection(board.classId, board.id, sectionId, title);
+        setSections((current) => current.map((item) => item.id === sectionId ? { ...item, title } : item));
+      },
+      deleteSection: async (sectionId) => {
+        const section = sections.find((item) => item.id === sectionId);
+        const board = section && boards.find((item) => item.id === section.boardId);
+        if (!section || !board) throw new Error("SECTION_NOT_FOUND");
+        if (sections.filter((item) => item.boardId === board.id).length <= 1) throw new Error("LAST_SECTION");
+        if (posts.some((item) => item.sectionId === sectionId)) throw new Error("SECTION_NOT_EMPTY");
+        if (firebaseConfigured) await deleteBoardSection(board.classId, board.id, sectionId);
+        setSections((current) => current.filter((item) => item.id !== sectionId));
+      },
+      moveSection: async (sectionId, direction) => {
+        const section = sections.find((item) => item.id === sectionId);
+        const board = section && boards.find((item) => item.id === section.boardId);
+        if (!section || !board) throw new Error("SECTION_NOT_FOUND");
+        const ordered = sections.filter((item) => item.boardId === board.id).sort((a, b) => a.sortOrder - b.sortOrder);
+        const index = ordered.findIndex((item) => item.id === sectionId);
+        const target = index + direction;
+        if (target < 0 || target >= ordered.length) return;
+        [ordered[index], ordered[target]] = [ordered[target], ordered[index]];
+        const normalized = ordered.map((item, sortOrder) => ({ ...item, sortOrder }));
+        if (firebaseConfigured) await reorderBoardSections(board.classId, board.id, normalized.map((item) => item.id));
+        setSections((current) => [...current.filter((item) => item.boardId !== board.id), ...normalized]);
       },
       addPost: async ({ boardId, sectionId, caption, file }) => {
         if (!user) throw new Error("AUTH_REQUIRED");
@@ -437,8 +536,84 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
           throw error;
         }
       },
+      updatePost: async (postId, input) => {
+        const post = posts.find((item) => item.id === postId);
+        const board = post && boards.find((item) => item.id === post.boardId);
+        if (!post || !board) throw new Error("POST_NOT_FOUND");
+        if (firebaseConfigured) await updateBoardPost(board.classId, board.id, postId, input);
+        setPosts((current) => current.map((item) => item.id === postId ? { ...item, ...input } : item));
+      },
+      deletePost: async (postId) => {
+        const post = posts.find((item) => item.id === postId);
+        const board = post && boards.find((item) => item.id === post.boardId);
+        if (!post || !board) throw new Error("POST_NOT_FOUND");
+        const relatedComments = comments.filter((item) => item.postId === postId);
+        if (firebaseConfigured) {
+          if (!auth?.currentUser) throw new Error("AUTH_REQUIRED");
+          const token = await auth.currentUser.getIdToken();
+          const postFileIds = [post.mainFileId, post.thumbFileId].filter(Boolean) as string[];
+          const commentFileIds = relatedComments.flatMap((comment) => [comment.mainFileId, comment.thumbFileId]).filter(Boolean) as string[];
+          if (postFileIds.length || commentFileIds.length) await deletePostTreeFiles(token, board.classId, board.id, postId, [...postFileIds, ...commentFileIds]);
+          await deleteBoardPostData(board.classId, board.id, postId);
+        }
+        setPosts((current) => current.filter((item) => item.id !== postId));
+        setComments((current) => current.filter((item) => item.postId !== postId));
+      },
+      addComment: async (boardId, postId, text, file) => {
+        if (!user) throw new Error("AUTH_REQUIRED");
+        const board = boards.find((item) => item.id === boardId);
+        if (!board?.allowComments) throw new Error("COMMENTS_CLOSED");
+        const commentId = firebaseConfigured ? reserveCommentId(board.classId, boardId) : `comment-${crypto.randomUUID()}`;
+        const comment: BoardComment = {
+          id: commentId, boardId, postId, authorUid: user.uid, authorName: user.displayName,
+          authorInitials: user.initials, text, createdLabel: "Just now",
+        };
+        let uploaded: Awaited<ReturnType<typeof uploadCommentImage>> | undefined;
+        let token = "";
+        if (file && firebaseConfigured) {
+          if (!auth?.currentUser) throw new Error("AUTH_REQUIRED");
+          token = await auth.currentUser.getIdToken();
+          const processed = await processImage(file);
+          uploaded = await uploadCommentImage(token, board.classId, boardId, postId, commentId, processed.main, processed.thumbnail);
+          Object.assign(comment, {
+            mainFileId: uploaded.main.fileId, thumbFileId: uploaded.thumbnail.fileId,
+            mainImageUrl: driveMediaUrl(uploaded.main), thumbImageUrl: driveMediaUrl(uploaded.thumbnail),
+            imageBytes: uploaded.main.size, thumbBytes: uploaded.thumbnail.size,
+          });
+        } else if (file) {
+          comment.mainImageUrl = URL.createObjectURL(file);
+          comment.thumbImageUrl = comment.mainImageUrl;
+        }
+        try {
+          if (firebaseConfigured) await createBoardComment(board.classId, boardId, commentId, user, comment);
+          setComments((current) => [...current, comment]);
+        } catch (error) {
+          if (uploaded) await deleteCommentFiles(token, board.classId, boardId, commentId, [uploaded.main.fileId, uploaded.thumbnail.fileId]).catch(() => undefined);
+          throw error;
+        }
+      },
+      updateComment: async (commentId, text) => {
+        const comment = comments.find((item) => item.id === commentId);
+        const board = comment && boards.find((item) => item.id === comment.boardId);
+        if (!comment || !board) throw new Error("COMMENT_NOT_FOUND");
+        if (firebaseConfigured) await updateBoardComment(board.classId, board.id, commentId, text);
+        setComments((current) => current.map((item) => item.id === commentId ? { ...item, text } : item));
+      },
+      deleteComment: async (commentId) => {
+        const comment = comments.find((item) => item.id === commentId);
+        const board = comment && boards.find((item) => item.id === comment.boardId);
+        if (!comment || !board) throw new Error("COMMENT_NOT_FOUND");
+        if (firebaseConfigured) {
+          if (!auth?.currentUser) throw new Error("AUTH_REQUIRED");
+          const token = await auth.currentUser.getIdToken();
+          const fileIds = [comment.mainFileId, comment.thumbFileId].filter(Boolean) as string[];
+          if (fileIds.length) await deleteCommentFiles(token, board.classId, board.id, commentId, fileIds);
+          await deleteBoardCommentData(board.classId, board.id, commentId);
+        }
+        setComments((current) => current.filter((item) => item.id !== commentId));
+      },
     }),
-    [appRole, authError, authReady, boards, classes, dataError, dataLoading, posts, sections, user, watchBoardPosts],
+    [appRole, authError, authReady, boards, classes, comments, dataError, dataLoading, posts, sections, user, watchBoardComments, watchBoardPosts],
   );
 
   return (
