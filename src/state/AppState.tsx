@@ -43,12 +43,11 @@ import {
   upsertUserProfile,
   updateBoardComment,
   updateBoardPost,
-  updateBoardPostDisplayColumns,
   updateBoardSettings,
 } from "../firebase/workspace";
 import { deleteBoardFiles, deleteCommentFiles, deletePostFiles, deletePostTreeFiles, driveMediaUrl, uploadCommentImage, uploadPostImage } from "../services/appsScriptApi";
 import { processImage, type ProcessedImage } from "../services/imageProcessor";
-import type { AppRole, BoardComment, BoardPost, BoardSection, BoardSummary, Classroom, DemoUser, PostDisplayColumns, StaffCandidate } from "../types";
+import type { AppRole, BoardComment, BoardPost, BoardSection, BoardSummary, Classroom, DemoUser, PostDisplayColumns, StaffCandidate, ThumbnailMode } from "../types";
 
 interface NewPostInput {
   boardId: string;
@@ -86,6 +85,7 @@ interface AppStateValue {
     setting: "allowPosting" | "allowComments",
   ) => Promise<void>;
   updateBoard: (boardId: string, input: { title: string; description: string }) => Promise<void>;
+  updateBoardDisplay: (boardId: string, input: { postColumns?: PostDisplayColumns; thumbnailMode?: ThumbnailMode }) => Promise<void>;
   deleteBoard: (boardId: string) => Promise<void>;
   addSection: (boardId: string, title: string) => Promise<void>;
   renameSection: (sectionId: string, title: string) => Promise<void>;
@@ -93,7 +93,6 @@ interface AppStateValue {
   moveSection: (sectionId: string, direction: -1 | 1) => Promise<void>;
   addPost: (input: NewPostInput) => Promise<void>;
   updatePost: (postId: string, input: { caption: string; sectionId: string }) => Promise<void>;
-  setPostDisplayColumns: (postId: string, displayColumns: PostDisplayColumns) => Promise<void>;
   deletePost: (postId: string) => Promise<void>;
   watchBoardPosts: (classId: string, boardId: string) => () => void;
   watchBoardComments: (classId: string, boardId: string) => () => void;
@@ -429,6 +428,24 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
         if (firebaseConfigured) await updateBoardSettings(board.classId, boardId, input);
         setBoards((current) => current.map((item) => item.id === boardId ? { ...item, ...input } : item));
       },
+      updateBoardDisplay: async (boardId, input) => {
+        const board = boards.find((item) => item.id === boardId);
+        if (!board) throw new Error("BOARD_NOT_FOUND");
+        setBoards((current) => current.map((item) => item.id === boardId ? { ...item, ...input } : item));
+        try {
+          if (firebaseConfigured) await updateBoardSettings(board.classId, boardId, input);
+        } catch (error) {
+          setBoards((current) => current.map((item) => {
+            if (item.id !== boardId) return item;
+            return {
+              ...item,
+              ...(input.postColumns !== undefined && item.postColumns === input.postColumns ? { postColumns: board.postColumns } : {}),
+              ...(input.thumbnailMode !== undefined && item.thumbnailMode === input.thumbnailMode ? { thumbnailMode: board.thumbnailMode } : {}),
+            };
+          }));
+          throw error;
+        }
+      },
       deleteBoard: async (boardId) => {
         const board = boards.find((item) => item.id === boardId);
         if (!board) throw new Error("BOARD_NOT_FOUND");
@@ -549,18 +566,6 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
         if (!post || !board) throw new Error("POST_NOT_FOUND");
         if (firebaseConfigured) await updateBoardPost(board.classId, board.id, postId, input);
         setPosts((current) => current.map((item) => item.id === postId ? { ...item, ...input } : item));
-      },
-      setPostDisplayColumns: async (postId, displayColumns) => {
-        const post = posts.find((item) => item.id === postId);
-        const board = post && boards.find((item) => item.id === post.boardId);
-        if (!post || !board) throw new Error("POST_NOT_FOUND");
-        setPosts((current) => current.map((item) => item.id === postId ? { ...item, displayColumns } : item));
-        try {
-          if (firebaseConfigured) await updateBoardPostDisplayColumns(board.classId, board.id, postId, displayColumns);
-        } catch (error) {
-          setPosts((current) => current.map((item) => item.id === postId && item.displayColumns === displayColumns ? { ...item, displayColumns: post.displayColumns ?? 1 } : item));
-          throw error;
-        }
       },
       deletePost: async (postId) => {
         const post = posts.find((item) => item.id === postId);

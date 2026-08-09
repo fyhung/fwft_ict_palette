@@ -6,6 +6,7 @@ import {
   ChevronUp,
   GripVertical,
   ImagePlus,
+  Minus,
   Presentation,
   QrCode,
   Settings,
@@ -24,7 +25,7 @@ import { useAppState } from "../state/AppState";
 
 export function BoardPage() {
   const { classId = "", boardId = "" } = useParams();
-  const { appRole, classes, boards, sections, posts, comments, toggleBoardSetting, user, signIn, ensureClassLoaded, watchBoardPosts, watchBoardComments, addSection, renameSection, deleteSection, moveSection, setPostDisplayColumns } = useAppState();
+  const { appRole, classes, boards, sections, posts, comments, toggleBoardSetting, updateBoardDisplay, user, signIn, ensureClassLoaded, watchBoardPosts, watchBoardComments, addSection, renameSection, deleteSection, moveSection } = useAppState();
   const board = boards.find((item) => item.id === boardId);
   const classroom = classes.find((item) => item.id === classId);
   const [dialogOpen, setDialogOpen] = useState(false);
@@ -55,6 +56,13 @@ export function BoardPage() {
 
   if (!classroom && user && appRole) return <main className="page-shell"><div className="workspace-empty">Loading board...</div></main>;
   if (!board || !classroom) return <main className="page-shell"><h1>Board not found</h1></main>;
+
+  const postColumns = board.postColumns ?? 1;
+  const thumbnailMode = board.thumbnailMode ?? "crop";
+
+  const saveBoardDisplay = (input: { postColumns?: PostDisplayColumns; thumbnailMode?: "crop" | "original" }) => {
+    void updateBoardDisplay(board.id, input).catch((error) => window.alert(error instanceof Error ? error.message : "Could not update the board display."));
+  };
 
   const openPostDialog = (sectionId?: string) => {
     if (!user) signIn();
@@ -110,7 +118,11 @@ export function BoardPage() {
       </section>
 
       <div className="board-content page-shell">
-        {classroom.canManage && <div className="section-tools"><button className="button button-secondary" onClick={() => { const title = window.prompt("New section name", `Section ${boardSections.length + 1}`)?.trim(); if (title) void addSection(board.id, title); }}><Plus size={17} /> New section</button></div>}
+        {classroom.canManage && <div className="section-tools"><div className="board-display-tools">
+          <div className="board-size-control" role="group" aria-label={`Board post size level ${postColumns} of 4`}><span>Post size</span><button type="button" aria-label="Make all posts smaller" disabled={postColumns === 1} onClick={() => saveBoardDisplay({ postColumns: Math.max(1, postColumns - 1) as PostDisplayColumns })}><Minus size={16} /></button><strong>{postColumns}×</strong><button type="button" aria-label="Make all posts larger" disabled={postColumns === 4} onClick={() => saveBoardDisplay({ postColumns: Math.min(4, postColumns + 1) as PostDisplayColumns })}><Plus size={16} /></button></div>
+          <button className="button button-secondary thumbnail-mode-toggle" type="button" aria-pressed={thumbnailMode === "original"} onClick={() => saveBoardDisplay({ thumbnailMode: thumbnailMode === "crop" ? "original" : "crop" })}>{thumbnailMode === "crop" ? "Show original ratio" : "Crop thumbnails"}</button>
+          <button className="button button-secondary" onClick={() => { const title = window.prompt("New section name", `Section ${boardSections.length + 1}`)?.trim(); if (title) void addSection(board.id, title); }}><Plus size={17} /> New section</button>
+        </div></div>}
         {boardSections.map((section) => {
           const sectionPosts = posts.filter((post) => post.boardId === boardId && post.sectionId === section.id);
           return (
@@ -126,7 +138,7 @@ export function BoardPage() {
                 </>}</div>
               </header>
               {sectionPosts.length ? (
-                <div className="post-grid">{sectionPosts.map((post) => <PostCard post={{ ...post, commentCount: comments.filter((comment) => comment.postId === post.id).length }} key={post.id} onOpen={() => { setEditSelectedPost(false); setSelectedPost(post); }} onEdit={classroom.canManage ? () => { setEditSelectedPost(true); setSelectedPost(post); } : undefined} onResize={classroom.canManage ? (direction) => { const displayColumns = Math.min(4, Math.max(1, (post.displayColumns ?? 1) + direction)) as PostDisplayColumns; void setPostDisplayColumns(post.id, displayColumns).catch((error) => window.alert(error instanceof Error ? error.message : "Could not resize the post.")); } : undefined} />)}</div>
+                <div className="post-grid">{sectionPosts.map((post) => <PostCard post={{ ...post, commentCount: comments.filter((comment) => comment.postId === post.id).length }} displayColumns={postColumns} thumbnailMode={thumbnailMode} key={post.id} onOpen={() => { setEditSelectedPost(false); setSelectedPost(post); }} onEdit={classroom.canManage ? () => { setEditSelectedPost(true); setSelectedPost(post); } : undefined} />)}</div>
               ) : (
                 <div className="empty-section">No photos in this section yet.</div>
               )}

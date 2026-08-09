@@ -1,6 +1,8 @@
 export type AppRole = "owner" | "teacher" | "student";
 export type ClassRole = "app owner" | "owner" | "view only";
 export type BoardStatus = "active" | "archived";
+export type PostDisplayColumns = 1 | 2 | 3 | 4;
+export type ThumbnailMode = "crop" | "original";
 
 export interface Classroom {
   id: string;
@@ -26,6 +28,8 @@ export interface BoardSummary {
   commentCount: number;
   contributorCount: number;
   updatedLabel: string;
+  postColumns?: PostDisplayColumns;
+  thumbnailMode?: ThumbnailMode;
 }
 
 export interface BoardSection {
@@ -35,8 +39,6 @@ export interface BoardSection {
   note: string;
   sortOrder: number;
 }
-
-export type PostDisplayColumns = 1 | 2 | 3 | 4;
 
 export interface BoardPost {
   id: string;
@@ -56,7 +58,6 @@ export interface BoardPost {
   visual: string;
   createdLabel: string;
   commentCount: number;
-  displayColumns?: PostDisplayColumns;
 }
 
 export interface BoardComment {
