@@ -13,7 +13,7 @@ import {
   type DocumentData,
   type QueryDocumentSnapshot,
 } from "firebase/firestore";
-import type { AppRole, BoardComment, BoardPost, BoardSection, BoardSummary, Classroom, DemoUser, StaffCandidate } from "../types";
+import type { AppRole, BoardComment, BoardPost, BoardSection, BoardSummary, Classroom, DemoUser, PostDisplayColumns, StaffCandidate } from "../types";
 import { db } from "./client";
 
 export const APP_OWNER_EMAIL = "fyhung@twghfwfts.edu.hk";
@@ -91,6 +91,9 @@ function postFromSnapshot(boardId: string, snapshot: QueryDocumentSnapshot<Docum
   const authorName = String(data.authorName || "Student");
   const mainImageUrl = String(data.mainImageUrl || "");
   const thumbImageUrl = String(data.thumbImageUrl || "");
+  const parsedColumns = Number(data.displayColumns || (data.displaySize === "large" ? 2 : 1));
+  const storedColumns = Number.isFinite(parsedColumns) ? parsedColumns : 1;
+  const displayColumns = Math.min(4, Math.max(1, Math.round(storedColumns))) as PostDisplayColumns;
   return {
     id: snapshot.id,
     boardId,
@@ -109,6 +112,7 @@ function postFromSnapshot(boardId: string, snapshot: QueryDocumentSnapshot<Docum
     visual: "visual-upload",
     createdLabel: "Just now",
     commentCount: Number(data.commentCount || 0),
+    displayColumns,
   };
 }
 
@@ -297,6 +301,7 @@ export async function createBoardPost(
     imageBytes: input.imageBytes,
     thumbBytes: input.thumbBytes,
     sortOrder: Date.now(),
+    displayColumns: 1,
     status: "active",
     commentCount: 0,
     createdAt: serverTimestamp(),
@@ -321,6 +326,7 @@ export async function createBoardPost(
     visual: "visual-upload",
     createdLabel: "Just now",
     commentCount: 0,
+    displayColumns: 1,
   };
 }
 
@@ -417,6 +423,19 @@ export async function updateBoardPost(
   await updateDoc(doc(db, "classes", classId, "boards", boardId, "posts", postId), {
     caption: input.caption,
     sectionId: input.sectionId,
+    updatedAt: serverTimestamp(),
+  });
+}
+
+export async function updateBoardPostDisplayColumns(
+  classId: string,
+  boardId: string,
+  postId: string,
+  displayColumns: PostDisplayColumns,
+) {
+  if (!db) throw new Error("FIRESTORE_NOT_CONFIGURED");
+  await updateDoc(doc(db, "classes", classId, "boards", boardId, "posts", postId), {
+    displayColumns,
     updatedAt: serverTimestamp(),
   });
 }

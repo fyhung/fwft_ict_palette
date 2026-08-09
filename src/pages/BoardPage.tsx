@@ -19,12 +19,12 @@ import { PostCard } from "../components/PostCard";
 import { PostDialog } from "../components/PostDialog";
 import { BoardSettingsDialog } from "../components/BoardSettingsDialog";
 import { PostDetailDialog } from "../components/PostDetailDialog";
-import type { BoardPost } from "../types";
+import type { BoardPost, PostDisplayColumns } from "../types";
 import { useAppState } from "../state/AppState";
 
 export function BoardPage() {
   const { classId = "", boardId = "" } = useParams();
-  const { appRole, classes, boards, sections, posts, comments, toggleBoardSetting, user, signIn, ensureClassLoaded, watchBoardPosts, watchBoardComments, addSection, renameSection, deleteSection, moveSection } = useAppState();
+  const { appRole, classes, boards, sections, posts, comments, toggleBoardSetting, user, signIn, ensureClassLoaded, watchBoardPosts, watchBoardComments, addSection, renameSection, deleteSection, moveSection, setPostDisplayColumns } = useAppState();
   const board = boards.find((item) => item.id === boardId);
   const classroom = classes.find((item) => item.id === classId);
   const [dialogOpen, setDialogOpen] = useState(false);
@@ -126,7 +126,7 @@ export function BoardPage() {
                 </>}</div>
               </header>
               {sectionPosts.length ? (
-                <div className="post-grid">{sectionPosts.map((post) => <PostCard post={{ ...post, commentCount: comments.filter((comment) => comment.postId === post.id).length }} key={post.id} onOpen={() => { setEditSelectedPost(false); setSelectedPost(post); }} onEdit={classroom.canManage ? () => { setEditSelectedPost(true); setSelectedPost(post); } : undefined} />)}</div>
+                <div className="post-grid">{sectionPosts.map((post) => <PostCard post={{ ...post, commentCount: comments.filter((comment) => comment.postId === post.id).length }} key={post.id} onOpen={() => { setEditSelectedPost(false); setSelectedPost(post); }} onEdit={classroom.canManage ? () => { setEditSelectedPost(true); setSelectedPost(post); } : undefined} onResize={classroom.canManage ? (direction) => { const displayColumns = Math.min(4, Math.max(1, (post.displayColumns ?? 1) + direction)) as PostDisplayColumns; void setPostDisplayColumns(post.id, displayColumns).catch((error) => window.alert(error instanceof Error ? error.message : "Could not resize the post.")); } : undefined} />)}</div>
               ) : (
                 <div className="empty-section">No photos in this section yet.</div>
               )}

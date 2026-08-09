@@ -36,6 +36,8 @@ export interface BoardSection {
   sortOrder: number;
 }
 
+export type PostDisplayColumns = 1 | 2 | 3 | 4;
+
 export interface BoardPost {
   id: string;
   boardId: string;
@@ -54,6 +56,7 @@ export interface BoardPost {
   visual: string;
   createdLabel: string;
   commentCount: number;
+  displayColumns?: PostDisplayColumns;
 }
 
 export interface BoardComment {
