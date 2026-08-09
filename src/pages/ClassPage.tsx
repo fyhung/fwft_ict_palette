@@ -1,17 +1,19 @@
-import { ArrowLeft, BarChart3, MoreHorizontal, Plus, Presentation } from "lucide-react";
-import { useEffect, useRef, useState } from "react";
-import { Link, useParams } from "react-router-dom";
+import { ArrowLeft, BarChart3, Plus, Presentation } from "lucide-react";
+import { useEffect, useMemo, useRef, useState } from "react";
+import { Link, useNavigate, useParams } from "react-router-dom";
 import { NewBoardDialog } from "../components/NewBoardDialog";
 import { useAppState } from "../state/AppState";
 
 export function ClassPage() {
   const { classId = "" } = useParams();
-  const { user, appRole, classes, boards, dataLoading, dataError, ensureClassLoaded } = useAppState();
+  const navigate = useNavigate();
+  const { user, appRole, classes, boards, dataLoading, dataError, ensureClassLoaded, loadBoardPreviewImages } = useAppState();
   const [lookupComplete, setLookupComplete] = useState(false);
   const [newBoardOpen, setNewBoardOpen] = useState(false);
+  const [boardPreviews, setBoardPreviews] = useState<Record<string, string[]>>({});
   const requestedClass = useRef("");
   const classroom = classes.find((item) => item.id === classId);
-  const classBoards = boards.filter((board) => board.classId === classId);
+  const classBoards = useMemo(() => boards.filter((board) => board.classId === classId), [boards, classId]);
 
   useEffect(() => {
     if (!user || !appRole || classroom || requestedClass.current === classId) return;
@@ -23,12 +25,23 @@ export function ClassPage() {
     return () => { active = false; };
   }, [appRole, classId, classroom, ensureClassLoaded, user]);
 
+  useEffect(() => {
+    let active = true;
+    const missing = classBoards.filter((board) => boardPreviews[board.id] === undefined);
+    if (!missing.length) return;
+    void Promise.all(missing.map(async (board) => [board.id, await loadBoardPreviewImages(board.id).catch(() => [])] as const)).then((results) => {
+      if (!active) return;
+      setBoardPreviews((current) => Object.fromEntries([...Object.entries(current), ...results]));
+    });
+    return () => { active = false; };
+  }, [boardPreviews, classBoards, loadBoardPreviewImages]);
+
   if (!classroom && (dataLoading || !lookupComplete || requestedClass.current !== classId)) return <main className="page-shell"><div className="workspace-empty">Loading class...</div></main>;
   if (!classroom && dataError) return <main className="page-shell"><div className="probe-error" role="alert"><strong>Class could not load.</strong> {dataError}</div><Link to="/teacher">Return to classes</Link></main>;
   if (!classroom) return <NotFound />;
 
   return (
-    <main className="page-shell">
+    <main className="page-shell class-page">
       <Link className="back-link" to="/teacher"><ArrowLeft size={17} /> All classes</Link>
       <section className="class-hero">
         <div>
@@ -51,34 +64,29 @@ export function ClassPage() {
         </div>
         <div className="board-list">
           {classBoards.map((board) => (
-            <article className="board-row" key={board.id}>
-              <div className={`board-index ${board.status === "archived" ? "muted" : ""}`}>
-                {String(classBoards.indexOf(board) + 1).padStart(2, "0")}
+            <article className="board-row" key={board.id} role="link" tabIndex={0} aria-label={`Open ${board.title}`} onClick={() => navigate(`/c/${classId}/b/${board.id}`)} onKeyDown={(event) => { if (event.target === event.currentTarget && (event.key === "Enter" || event.key === " ")) { event.preventDefault(); navigate(`/c/${classId}/b/${board.id}`); } }}>
+              <div className={`board-preview board-preview-${Math.min(3, boardPreviews[board.id]?.length || 0)} ${board.status === "archived" ? "muted" : ""}`}>
+                {(boardPreviews[board.id] || []).map((imageUrl, index) => <img src={imageUrl} alt="" loading="lazy" key={`${imageUrl}-${index}`} />)}
+                {!boardPreviews[board.id]?.length && <div className="board-preview-empty"><strong>{String(classBoards.indexOf(board) + 1).padStart(2, "0")}</strong><span>{boardPreviews[board.id] ? "No photos yet" : "Loading previews…"}</span></div>}
+                <div className="board-preview-status"><span className={`status-dot ${board.allowPosting ? "open" : "closed"}`} />{board.status === "archived" ? "Archived" : board.allowPosting ? "Posting open" : "Posting closed"}</div>
               </div>
               <div className="board-main">
                 <div className="board-title-row">
                   <div>
-                    <div className="board-status-line">
-                      <span className={`status-dot ${board.allowPosting ? "open" : "closed"}`} />
-                      {board.status === "archived" ? "Archived" : board.allowPosting ? "Posting open" : "Posting closed"}
-                    </div>
                     <h3>{board.title}</h3>
                     <p>{board.description}</p>
                   </div>
-                  {classroom.canManage && <button className="icon-button" aria-label={`More actions for ${board.title}`}><MoreHorizontal /></button>}
                 </div>
                 <div className="board-stats">
                   <span><strong>{board.postCount}</strong> posts</span>
                   <span><strong>{board.commentCount}</strong> comments</span>
                   <span><strong>{board.contributorCount}</strong> contributors</span>
-                  <span>{board.updatedLabel}</span>
                 </div>
-                <div className="board-actions">
-                  <Link className="button button-secondary" to={`/c/${classId}/b/${board.id}`}>Open board</Link>
+                <div className="board-card-footer"><span>{board.updatedLabel}</span>
                   {classroom.canManage && board.status === "active" && (
-                    <Link className="button button-primary" to={`/c/${classId}/b/${board.id}/present`}>
+                    <button className="button button-primary" type="button" onClick={(event) => { event.stopPropagation(); navigate(`/c/${classId}/b/${board.id}/present`); }}>
                       <Presentation size={18} /> Present
-                    </Link>
+                    </button>
                   )}
                 </div>
               </div>

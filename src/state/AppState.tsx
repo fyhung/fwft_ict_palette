@@ -31,6 +31,7 @@ import {
   deleteEmptyManagedClass,
   listStaffCandidates,
   loadClassWorkspace,
+  loadBoardPreviewImages as loadBoardPreviewImagesFromFirestore,
   reservePostId,
   reserveCommentId,
   renameBoardSection,
@@ -78,6 +79,7 @@ interface AppStateValue {
   createBoard: (classId: string, input: { title: string; description: string }) => Promise<string>;
   deleteClass: (classId: string) => Promise<void>;
   ensureClassLoaded: (classId: string) => Promise<void>;
+  loadBoardPreviewImages: (boardId: string) => Promise<string[]>;
   loadStaffCandidates: () => Promise<StaffCandidate[]>;
   setTeacherApproved: (candidate: StaffCandidate, approved: boolean) => Promise<void>;
   toggleBoardSetting: (
@@ -400,6 +402,18 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
         } finally {
           setDataLoading(false);
         }
+      },
+      loadBoardPreviewImages: async (boardId) => {
+        const board = boards.find((item) => item.id === boardId);
+        if (!board) return [];
+        if (!firebaseConfigured) {
+          return posts
+            .filter((post) => post.boardId === boardId)
+            .map((post) => post.imageUrl || post.thumbImageUrl || post.mainImageUrl || "")
+            .filter(Boolean)
+            .slice(0, 3);
+        }
+        return loadBoardPreviewImagesFromFirestore(board.classId, boardId, 3);
       },
       loadStaffCandidates: async () => {
         if (appRole !== "owner") throw new Error("OWNER_REQUIRED");

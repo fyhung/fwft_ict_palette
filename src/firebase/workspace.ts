@@ -5,7 +5,9 @@ import {
   doc,
   getDoc,
   getDocs,
+  limit as firestoreLimit,
   onSnapshot,
+  query,
   serverTimestamp,
   setDoc,
   updateDoc,
@@ -189,6 +191,18 @@ export async function loadClassWorkspace(classId: string, uid: string, appRole: 
     boards: classBoards,
     sections: boardResults.flatMap((item) => item.sections),
   };
+}
+
+export async function loadBoardPreviewImages(classId: string, boardId: string, count = 3) {
+  if (!db) throw new Error("FIRESTORE_NOT_CONFIGURED");
+  const snapshot = await getDocs(query(
+    collection(db, "classes", classId, "boards", boardId, "posts"),
+    firestoreLimit(count),
+  ));
+  return snapshot.docs
+    .map((item) => String(item.data().thumbImageUrl || item.data().mainImageUrl || ""))
+    .filter(Boolean)
+    .slice(0, count);
 }
 
 export async function createOwnedClass(
