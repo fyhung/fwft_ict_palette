@@ -1,7 +1,8 @@
-import { MessageCircle, Pencil } from "lucide-react";
+import { GripVertical, MessageCircle, Pencil } from "lucide-react";
+import type { ButtonHTMLAttributes } from "react";
 import type { BoardPost, PostDisplayColumns, ThumbnailMode } from "../types";
 
-export function PostCard({ post, displayColumns, thumbnailMode, onOpen, onEdit }: { post: BoardPost; displayColumns: PostDisplayColumns; thumbnailMode: ThumbnailMode; onOpen?: () => void; onEdit?: () => void }) {
+export function PostCard({ post, displayColumns, thumbnailMode, onOpen, onEdit, dragHandleProps }: { post: BoardPost; displayColumns: PostDisplayColumns; thumbnailMode: ThumbnailMode; onOpen?: () => void; onEdit?: () => void; dragHandleProps?: ButtonHTMLAttributes<HTMLButtonElement> }) {
   const resolvedThumbnailMode = thumbnailMode === "original" && post.imageUrl ? "original" : "crop";
   return (
     <article className={`post-card post-card-size-${displayColumns}`} tabIndex={0} role="button" onClick={onOpen} onKeyDown={(event) => { if (event.key === "Enter" || event.key === " ") onOpen?.(); }}>
@@ -11,6 +12,7 @@ export function PostCard({ post, displayColumns, thumbnailMode, onOpen, onEdit }
         ) : (
           <span className="visual-label" aria-hidden="true" />
         )}
+        {dragHandleProps && <button {...dragHandleProps} className="post-card-drag" type="button" aria-label={`Drag ${post.caption} to another section`} title="Drag to another section" onClick={(event) => { event.stopPropagation(); dragHandleProps.onClick?.(event); }}><GripVertical size={17} /></button>}
         {onEdit && <button className="post-card-edit" type="button" aria-label={`Edit ${post.caption}`} onClick={(event) => { event.stopPropagation(); onEdit(); }}><Pencil size={15} /> Edit</button>}
       </div>
       <div className="post-body">

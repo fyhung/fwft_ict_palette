@@ -578,8 +578,13 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
         const post = posts.find((item) => item.id === postId);
         const board = post && boards.find((item) => item.id === post.boardId);
         if (!post || !board) throw new Error("POST_NOT_FOUND");
-        if (firebaseConfigured) await updateBoardPost(board.classId, board.id, postId, input);
         setPosts((current) => current.map((item) => item.id === postId ? { ...item, ...input } : item));
+        try {
+          if (firebaseConfigured) await updateBoardPost(board.classId, board.id, postId, input);
+        } catch (error) {
+          setPosts((current) => current.map((item) => item.id === postId && item.caption === input.caption && item.sectionId === input.sectionId ? post : item));
+          throw error;
+        }
       },
       deletePost: async (postId) => {
         const post = posts.find((item) => item.id === postId);

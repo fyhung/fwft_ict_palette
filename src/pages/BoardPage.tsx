@@ -1,4 +1,16 @@
 import {
+  DndContext,
+  KeyboardSensor,
+  PointerSensor,
+  closestCenter,
+  useDraggable,
+  useDroppable,
+  useSensor,
+  useSensors,
+  type DragEndEvent,
+} from "@dnd-kit/core";
+import { CSS } from "@dnd-kit/utilities";
+import {
   ArrowLeft,
   BarChart3,
   Copy,
@@ -14,7 +26,7 @@ import {
   Plus,
   Trash2,
 } from "lucide-react";
-import { useEffect, useRef, useState } from "react";
+import { type ReactNode, useEffect, useRef, useState } from "react";
 import { Link, useParams } from "react-router-dom";
 import { PostCard } from "../components/PostCard";
 import { PostDialog } from "../components/PostDialog";
@@ -25,7 +37,7 @@ import { useAppState } from "../state/AppState";
 
 export function BoardPage() {
   const { classId = "", boardId = "" } = useParams();
-  const { appRole, classes, boards, sections, posts, comments, toggleBoardSetting, updateBoardDisplay, user, signIn, ensureClassLoaded, watchBoardPosts, watchBoardComments, addSection, renameSection, deleteSection, moveSection } = useAppState();
+  const { appRole, classes, boards, sections, posts, comments, toggleBoardSetting, updateBoardDisplay, user, signIn, ensureClassLoaded, watchBoardPosts, watchBoardComments, addSection, renameSection, deleteSection, moveSection, updatePost } = useAppState();
   const board = boards.find((item) => item.id === boardId);
   const classroom = classes.find((item) => item.id === classId);
   const [dialogOpen, setDialogOpen] = useState(false);
@@ -35,6 +47,10 @@ export function BoardPage() {
   const [editSelectedPost, setEditSelectedPost] = useState(false);
   const [copyLabel, setCopyLabel] = useState("Copy link");
   const requestedClass = useRef("");
+  const dragSensors = useSensors(
+    useSensor(PointerSensor, { activationConstraint: { distance: 6 } }),
+    useSensor(KeyboardSensor),
+  );
   const boardSections = sections.filter((section) => section.boardId === boardId).sort((a, b) => a.sortOrder - b.sortOrder);
   const orderedBoardPosts = boardSections.flatMap((section) => posts.filter((post) => post.boardId === boardId && post.sectionId === section.id));
 
@@ -84,6 +100,15 @@ export function BoardPage() {
     setSelectedPost(orderedBoardPosts[nextIndex]);
   };
 
+  const finishPostDrag = (event: DragEndEvent) => {
+    if (!classroom.canManage || !event.over) return;
+    const postId = String(event.active.id).replace(/^post:/, "");
+    const targetSectionId = String(event.over.id).replace(/^section:/, "");
+    const post = posts.find((item) => item.id === postId);
+    if (!post || !boardSections.some((section) => section.id === targetSectionId) || post.sectionId === targetSectionId) return;
+    void updatePost(post.id, { caption: post.caption, sectionId: targetSectionId }).catch((error) => window.alert(error instanceof Error ? error.message : "Could not move the post."));
+  };
+
   return (
     <main className="board-page">
       <div className="board-topbar page-shell">
@@ -99,9 +124,9 @@ export function BoardPage() {
       </div>
 
       <section className="board-heading page-shell">
-        <div>
+        <div className="board-title-block">
           <div className="board-kicker"><span>{classroom.name}</span><i /> Live lesson board</div>
-          <h1>{board.title}</h1>
+          <div className="board-title-action"><h1>{board.title}</h1><button className="button button-primary board-add-photo" onClick={() => openPostDialog(boardSections[0]?.id)} disabled={!board.allowPosting || boardSections.length === 0}><ImagePlus size={20} /> {board.allowPosting ? "Add photo" : "Posting closed"}</button></div>
           <p>{board.description}</p>
         </div>
         {classroom.canManage && <div className="live-controls">
@@ -123,10 +148,11 @@ export function BoardPage() {
           <button className="button button-secondary thumbnail-mode-toggle" type="button" aria-pressed={thumbnailMode === "original"} onClick={() => saveBoardDisplay({ thumbnailMode: thumbnailMode === "crop" ? "original" : "crop" })}>{thumbnailMode === "crop" ? "Show original ratio" : "Crop thumbnails"}</button>
           <button className="button button-secondary" onClick={() => { const title = window.prompt("New section name", `Section ${boardSections.length + 1}`)?.trim(); if (title) void addSection(board.id, title); }}><Plus size={17} /> New section</button>
         </div></div>}
+        <DndContext sensors={dragSensors} collisionDetection={closestCenter} onDragEnd={finishPostDrag}>
         {boardSections.map((section) => {
           const sectionPosts = posts.filter((post) => post.boardId === boardId && post.sectionId === section.id);
           return (
-            <section className="photo-section" key={section.id}>
+            <DroppableSection sectionId={section.id} disabled={!classroom.canManage} key={section.id}>
               <header className={`photo-section-header ${classroom.canManage ? "" : "view-only"}`}>
                 {classroom.canManage && <span className="drag-handle" aria-hidden="true"><GripVertical /></span>}
                 <div><h2>{section.title}</h2><p>{section.note}</p></div>
@@ -138,19 +164,17 @@ export function BoardPage() {
                 </>}</div>
               </header>
               {sectionPosts.length ? (
-                <div className="post-grid">{sectionPosts.map((post) => <PostCard post={{ ...post, commentCount: comments.filter((comment) => comment.postId === post.id).length }} displayColumns={postColumns} thumbnailMode={thumbnailMode} key={post.id} onOpen={() => { setEditSelectedPost(false); setSelectedPost(post); }} onEdit={classroom.canManage ? () => { setEditSelectedPost(true); setSelectedPost(post); } : undefined} />)}</div>
+                <div className="post-grid">{sectionPosts.map((post) => <DraggablePostCard post={{ ...post, commentCount: comments.filter((comment) => comment.postId === post.id).length }} displayColumns={postColumns} thumbnailMode={thumbnailMode} canDrag={Boolean(classroom.canManage)} key={post.id} onOpen={() => { setEditSelectedPost(false); setSelectedPost(post); }} onEdit={classroom.canManage ? () => { setEditSelectedPost(true); setSelectedPost(post); } : undefined} />)}</div>
               ) : (
                 <div className="empty-section">No photos in this section yet.</div>
               )}
-            </section>
+            </DroppableSection>
           );
         })}
+        </DndContext>
         {boardSections.length === 0 && <div className="empty-section">This board has no sections yet.</div>}
       </div>
 
-      <button className="floating-post" onClick={() => openPostDialog()} disabled={!board.allowPosting}>
-        <ImagePlus size={20} /> {board.allowPosting ? "Add photo" : "Posting closed"}
-      </button>
       <PostDialog boardId={board.id} initialSectionId={postSectionId} open={dialogOpen} onClose={() => { setDialogOpen(false); setPostSectionId(undefined); }} />
       <BoardSettingsDialog board={board} open={settingsOpen} onClose={() => setSettingsOpen(false)} onDeleted={() => { window.location.hash = `#/c/${classId}`; }} />
       {selectedPost && <PostDetailDialog
@@ -166,4 +190,16 @@ export function BoardPage() {
       />}
     </main>
   );
+}
+
+function DroppableSection({ sectionId, disabled, children }: { sectionId: string; disabled: boolean; children: ReactNode }) {
+  const { isOver, setNodeRef } = useDroppable({ id: `section:${sectionId}`, disabled });
+  return <section ref={setNodeRef} className={`photo-section ${isOver ? "is-drop-target" : ""}`}>{children}</section>;
+}
+
+function DraggablePostCard({ post, displayColumns, thumbnailMode, canDrag, onOpen, onEdit }: { post: BoardPost; displayColumns: PostDisplayColumns; thumbnailMode: "crop" | "original"; canDrag: boolean; onOpen: () => void; onEdit?: () => void }) {
+  const { attributes, listeners, setNodeRef, transform, isDragging } = useDraggable({ id: `post:${post.id}`, disabled: !canDrag });
+  return <div ref={setNodeRef} className={`post-drag-item post-card-size-${displayColumns} ${isDragging ? "is-dragging" : ""}`} style={{ transform: CSS.Transform.toString(transform) }}>
+    <PostCard post={post} displayColumns={displayColumns} thumbnailMode={thumbnailMode} onOpen={onOpen} onEdit={onEdit} dragHandleProps={canDrag ? { ...attributes, ...listeners } : undefined} />
+  </div>;
 }
