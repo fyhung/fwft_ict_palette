@@ -35,6 +35,7 @@ export function BoardPage() {
   const [copyLabel, setCopyLabel] = useState("Copy link");
   const requestedClass = useRef("");
   const boardSections = sections.filter((section) => section.boardId === boardId).sort((a, b) => a.sortOrder - b.sortOrder);
+  const orderedBoardPosts = boardSections.flatMap((section) => posts.filter((post) => post.boardId === boardId && post.sectionId === section.id));
 
   useEffect(() => {
     if (!user || !appRole || classroom || requestedClass.current === classId) return;
@@ -65,6 +66,14 @@ export function BoardPage() {
     await navigator.clipboard.writeText(window.location.href);
     setCopyLabel("Copied!");
     window.setTimeout(() => setCopyLabel("Copy link"), 1600);
+  };
+
+  const navigatePost = (direction: -1 | 1) => {
+    if (!selectedPost || orderedBoardPosts.length < 2) return;
+    const currentIndex = orderedBoardPosts.findIndex((post) => post.id === selectedPost.id);
+    const nextIndex = (currentIndex + direction + orderedBoardPosts.length) % orderedBoardPosts.length;
+    setEditSelectedPost(false);
+    setSelectedPost(orderedBoardPosts[nextIndex]);
   };
 
   return (
@@ -132,7 +141,17 @@ export function BoardPage() {
       </button>
       <PostDialog boardId={board.id} initialSectionId={postSectionId} open={dialogOpen} onClose={() => { setDialogOpen(false); setPostSectionId(undefined); }} />
       <BoardSettingsDialog board={board} open={settingsOpen} onClose={() => setSettingsOpen(false)} onDeleted={() => { window.location.hash = `#/c/${classId}`; }} />
-      {selectedPost && <PostDetailDialog post={posts.find((item) => item.id === selectedPost.id) || selectedPost} canManage={Boolean(classroom.canManage)} startEditing={editSelectedPost} open onClose={() => { setSelectedPost(undefined); setEditSelectedPost(false); }} />}
+      {selectedPost && <PostDetailDialog
+        post={posts.find((item) => item.id === selectedPost.id) || selectedPost}
+        canManage={Boolean(classroom.canManage)}
+        startEditing={editSelectedPost}
+        postPosition={Math.max(1, orderedBoardPosts.findIndex((post) => post.id === selectedPost.id) + 1)}
+        postCount={orderedBoardPosts.length}
+        onPreviousPost={orderedBoardPosts.length > 1 ? () => navigatePost(-1) : undefined}
+        onNextPost={orderedBoardPosts.length > 1 ? () => navigatePost(1) : undefined}
+        open
+        onClose={() => { setSelectedPost(undefined); setEditSelectedPost(false); }}
+      />}
     </main>
   );
 }
