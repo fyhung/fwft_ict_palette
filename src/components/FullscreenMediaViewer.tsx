@@ -38,13 +38,13 @@ export function FullscreenMediaViewer({
   onNextPost?: () => void;
 }) {
   const [activeIndex, setActiveIndex] = useState(initialIndex);
-  const [views, setViews] = useState<Record<string, MediaView>>({});
+  const [view, setView] = useState<MediaView>({ mode: "width", scale: 1 });
   const scrollArea = useRef<HTMLDivElement>(null);
   const itemRefs = useRef<Record<string, HTMLElement | null>>({});
 
   useEffect(() => {
     setActiveIndex(Math.min(initialIndex, Math.max(0, media.length - 1)));
-    setViews({});
+    setView({ mode: "width", scale: 1 });
     window.setTimeout(() => itemRefs.current[media[initialIndex]?.id]?.scrollIntoView({ block: "start" }), 0);
   }, [initialIndex, media]);
 
@@ -71,20 +71,11 @@ export function FullscreenMediaViewer({
     return () => window.removeEventListener("keydown", handleKeys);
   }, [onClose, onNextPost, onPreviousPost]);
 
-  const active = media[activeIndex];
-  const activeView = active ? views[active.id] || { mode: "width", scale: 1 } : { mode: "width", scale: 1 };
-
-  const setActiveView = (next: MediaView) => {
-    if (!active) return;
-    setViews((current) => ({ ...current, [active.id]: next }));
-  };
-
-  const imageStyle = useMemo(() => (item: ViewerMediaItem) => {
-    const view = views[item.id] || { mode: "width", scale: 1 };
+  const imageStyle = useMemo(() => () => {
     if (view.mode === "height") return { height: "calc(100vh - 190px)", width: "auto", maxWidth: "none" };
     if (view.mode === "zoom") return { width: `${Math.round(view.scale * 100)}%`, height: "auto", maxWidth: "none" };
     return { width: "100%", height: "auto", maxWidth: "none" };
-  }, [views]);
+  }, [view]);
 
   return <div className="fullscreen-gallery" role="dialog" aria-modal="true" aria-label="Post photo gallery">
     <header className="fullscreen-gallery-toolbar">
@@ -95,10 +86,10 @@ export function FullscreenMediaViewer({
       </div>
       <div className="gallery-zoom-controls" aria-label="Image zoom controls">
         <span>{activeIndex + 1}/{media.length}</span>
-        <button title="Zoom out" onClick={() => setActiveView({ mode: "zoom", scale: Math.max(.25, activeView.scale - .25) })}><ZoomOut /></button>
-        <button title="Zoom in" onClick={() => setActiveView({ mode: "zoom", scale: Math.min(4, activeView.scale + .25) })}><ZoomIn /></button>
-        <button title="Fit current photo to width" onClick={() => setActiveView({ mode: "width", scale: 1 })}><ChevronsLeftRight /></button>
-        <button title="Fit current photo to height" onClick={() => setActiveView({ mode: "height", scale: 1 })}><ChevronsUpDown /></button>
+        <button title="Zoom out all photos" onClick={() => setView({ mode: "zoom", scale: Math.max(.25, view.scale - .25) })}><ZoomOut /></button>
+        <button title="Zoom in all photos" onClick={() => setView({ mode: "zoom", scale: Math.min(4, view.scale + .25) })}><ZoomIn /></button>
+        <button title="Fit all photos to width" onClick={() => setView({ mode: "width", scale: 1 })}><ChevronsLeftRight /></button>
+        <button title="Fit all photos to height" onClick={() => setView({ mode: "height", scale: 1 })}><ChevronsUpDown /></button>
         <button className="gallery-close" onClick={onClose} aria-label="Close gallery"><X /></button>
       </div>
     </header>
@@ -111,7 +102,7 @@ export function FullscreenMediaViewer({
         onClick={() => setActiveIndex(index)}
       >
         <div className="fullscreen-media-label"><span>{index + 1}</span><strong>{item.label}</strong></div>
-        <div className="fullscreen-media-canvas"><img src={item.src} alt={item.alt} style={imageStyle(item)} /></div>
+        <div className="fullscreen-media-canvas"><img src={item.src} alt={item.alt} style={imageStyle()} /></div>
       </section>)}
     </div>
   </div>;
