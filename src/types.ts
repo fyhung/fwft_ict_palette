@@ -19,6 +19,7 @@ export interface Classroom {
 export interface BoardSummary {
   id: string;
   classId: string;
+  sortOrder: number;
   title: string;
   description: string;
   status: BoardStatus;

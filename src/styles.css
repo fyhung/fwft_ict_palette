@@ -228,6 +228,9 @@ h1, h2, h3 { font-family: "Manrope", sans-serif; letter-spacing: -0.035em; }
 .board-stats strong { color: var(--ink); }
 .board-card-footer { min-height: 45px; margin-top: auto; padding-top: .75rem; display: flex; align-items: center; justify-content: space-between; gap: .75rem; color: var(--muted); font-size: .72rem; }
 .board-card-footer .button { min-height: 36px; padding: .48rem .75rem; }
+.board-card-actions, .board-order-controls { display: flex; align-items: center; gap: .3rem; }
+.board-order-controls { padding: .15rem; border: 1px solid var(--line); border-radius: 10px; background: #f8f5ee; }
+.board-order-controls .mini-icon:disabled { opacity: .28; cursor: default; }
 
 .board-page { padding-bottom: 7rem; }
 .board-topbar { min-height: 64px; display: flex; align-items: center; justify-content: space-between; gap: 1rem; border-bottom: 1px solid var(--line); }

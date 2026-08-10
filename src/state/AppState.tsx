@@ -35,6 +35,7 @@ import {
   reservePostId,
   reserveCommentId,
   renameBoardSection,
+  reorderClassBoards,
   reorderBoardSections,
   setTeacherApproval,
   subscribeApplicationRole,
@@ -88,6 +89,7 @@ interface AppStateValue {
   ) => Promise<void>;
   updateBoard: (boardId: string, input: { title: string; description: string }) => Promise<void>;
   updateBoardDisplay: (boardId: string, input: { postColumns?: PostDisplayColumns; thumbnailMode?: ThumbnailMode }) => Promise<void>;
+  moveBoard: (boardId: string, direction: -1 | 1) => Promise<void>;
   deleteBoard: (boardId: string) => Promise<void>;
   addSection: (boardId: string, title: string) => Promise<void>;
   renameSection: (sectionId: string, title: string) => Promise<void>;
@@ -364,7 +366,11 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
         const classroom = classes.find((item) => item.id === classId);
         if (!classroom?.canManage) throw new Error("CLASS_MANAGEMENT_REQUIRED");
         setDataError(null);
-        const result = await createClassBoard(classId, user.uid, input);
+        const classBoards = boards.filter((item) => item.classId === classId);
+        const sortOrder = classBoards.length > 0
+          ? Math.max(...classBoards.map((item) => item.sortOrder)) + 1
+          : 0;
+        const result = await createClassBoard(classId, user.uid, input, sortOrder);
         setBoards((current) => current.some((item) => item.id === result.board.id) ? current : [...current, result.board]);
         setSections((current) => current.some((item) => item.id === result.section.id) ? current : [...current, result.section]);
         setClasses((current) => current.map((item) => item.id === classId
@@ -460,6 +466,23 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
           throw error;
         }
       },
+      moveBoard: async (boardId, direction) => {
+        const board = boards.find((item) => item.id === boardId);
+        if (!board) throw new Error("BOARD_NOT_FOUND");
+        const ordered = boards
+          .filter((item) => item.classId === board.classId)
+          .sort((a, b) => a.sortOrder - b.sortOrder);
+        const index = ordered.findIndex((item) => item.id === boardId);
+        const target = index + direction;
+        if (index < 0 || target < 0 || target >= ordered.length) return;
+        [ordered[index], ordered[target]] = [ordered[target], ordered[index]];
+        const normalized = ordered.map((item, sortOrder) => ({ ...item, sortOrder }));
+        if (firebaseConfigured) await reorderClassBoards(board.classId, normalized.map((item) => item.id));
+        setBoards((current) => [
+          ...current.filter((item) => item.classId !== board.classId),
+          ...normalized,
+        ]);
+      },
       deleteBoard: async (boardId) => {
         const board = boards.find((item) => item.id === boardId);
         if (!board) throw new Error("BOARD_NOT_FOUND");
@@ -478,9 +501,12 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
         const board = boards.find((item) => item.id === boardId);
         if (!board) throw new Error("BOARD_NOT_FOUND");
         const boardSections = sections.filter((item) => item.boardId === boardId);
+        const sortOrder = boardSections.length > 0
+          ? Math.min(...boardSections.map((item) => item.sortOrder)) - 1
+          : 0;
         const section = firebaseConfigured
-          ? await createBoardSection(board.classId, boardId, title, boardSections.length)
-          : { id: `section-${crypto.randomUUID()}`, boardId, title, note: "", sortOrder: boardSections.length };
+          ? await createBoardSection(board.classId, boardId, title, sortOrder)
+          : { id: `section-${crypto.randomUUID()}`, boardId, title, note: "", sortOrder };
         setSections((current) => [...current, section]);
       },
       renameSection: async (sectionId, title) => {

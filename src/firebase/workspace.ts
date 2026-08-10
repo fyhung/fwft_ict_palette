@@ -53,9 +53,12 @@ export function subscribeApplicationRole(
 
 function boardFromSnapshot(classId: string, snapshot: QueryDocumentSnapshot<DocumentData>): BoardSummary {
   const data = snapshot.data();
+  const storedSortOrder = Number(data.sortOrder);
+  const createdAtOrder = typeof data.createdAt?.toMillis === "function" ? data.createdAt.toMillis() : 0;
   return {
     id: snapshot.id,
     classId,
+    sortOrder: Number.isFinite(storedSortOrder) ? storedSortOrder : createdAtOrder,
     title: String(data.title || "Untitled board"),
     description: String(data.description || ""),
     status: data.status === "archived" ? "archived" : "active",
@@ -226,6 +229,7 @@ export async function createClassBoard(
   classId: string,
   createdBy: string,
   input: { title: string; description: string },
+  sortOrder: number,
 ): Promise<{ board: BoardSummary; section: BoardSection }> {
   if (!db) throw new Error("FIRESTORE_NOT_CONFIGURED");
   const boardReference = doc(collection(db, "classes", classId, "boards"));
@@ -239,6 +243,7 @@ export async function createClassBoard(
     allowComments: true,
     postColumns: 1,
     thumbnailMode: "crop",
+    sortOrder,
     status: "active",
     createdBy,
     postCount: 0,
@@ -260,6 +265,7 @@ export async function createClassBoard(
     board: {
       id: boardReference.id,
       classId,
+      sortOrder,
       title: input.title,
       description: input.description,
       status: "active",
@@ -280,6 +286,17 @@ export async function createClassBoard(
       sortOrder: 0,
     },
   };
+}
+
+export async function reorderClassBoards(classId: string, boardIds: string[]) {
+  if (!db) throw new Error("FIRESTORE_NOT_CONFIGURED");
+  const database = db;
+  const batch = writeBatch(database);
+  boardIds.forEach((boardId, sortOrder) => batch.update(
+    doc(database, "classes", classId, "boards", boardId),
+    { sortOrder, updatedAt: serverTimestamp() },
+  ));
+  await batch.commit();
 }
 
 export function reservePostId(classId: string, boardId: string) {

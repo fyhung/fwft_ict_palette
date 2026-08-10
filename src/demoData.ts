@@ -42,6 +42,7 @@ export const boards: BoardSummary[] = [
   {
     id: "forces-in-action",
     classId: "4a-physics",
+    sortOrder: 0,
     title: "Forces in action",
     description: "Photograph a real example of a force and explain what is happening.",
     status: "active",
@@ -55,6 +56,7 @@ export const boards: BoardSummary[] = [
   {
     id: "energy-transfers",
     classId: "4a-physics",
+    sortOrder: 1,
     title: "Energy transfers",
     description: "Trace where energy begins and where it goes.",
     status: "active",
@@ -68,6 +70,7 @@ export const boards: BoardSummary[] = [
   {
     id: "momentum-gallery",
     classId: "4a-physics",
+    sortOrder: 2,
     title: "Momentum gallery",
     description: "A visual review from last term.",
     status: "archived",
@@ -81,6 +84,7 @@ export const boards: BoardSummary[] = [
   {
     id: "forces-4b",
     classId: "4b-physics",
+    sortOrder: 0,
     title: "Forces around school",
     description: "Find balanced and unbalanced forces around campus.",
     status: "active",
@@ -94,6 +98,7 @@ export const boards: BoardSummary[] = [
   {
     id: "light-and-shadow",
     classId: "5a-science",
+    sortOrder: 0,
     title: "Light & shadow walk",
     description: "Capture evidence of reflection, refraction or shadow.",
     status: "active",

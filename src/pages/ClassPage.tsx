@@ -1,4 +1,4 @@
-import { ArrowLeft, BarChart3, Plus, Presentation } from "lucide-react";
+import { ArrowLeft, BarChart3, ChevronDown, ChevronUp, Plus, Presentation } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
 import { NewBoardDialog } from "../components/NewBoardDialog";
@@ -7,13 +7,15 @@ import { useAppState } from "../state/AppState";
 export function ClassPage() {
   const { classId = "" } = useParams();
   const navigate = useNavigate();
-  const { user, appRole, classes, boards, dataLoading, dataError, ensureClassLoaded, loadBoardPreviewImages } = useAppState();
+  const { user, appRole, classes, boards, dataLoading, dataError, ensureClassLoaded, loadBoardPreviewImages, moveBoard } = useAppState();
   const [lookupComplete, setLookupComplete] = useState(false);
   const [newBoardOpen, setNewBoardOpen] = useState(false);
   const [boardPreviews, setBoardPreviews] = useState<Record<string, string[]>>({});
   const requestedClass = useRef("");
   const classroom = classes.find((item) => item.id === classId);
-  const classBoards = useMemo(() => boards.filter((board) => board.classId === classId), [boards, classId]);
+  const classBoards = useMemo(() => boards
+    .filter((board) => board.classId === classId)
+    .sort((a, b) => a.sortOrder - b.sortOrder), [boards, classId]);
 
   useEffect(() => {
     if (!user || !appRole || classroom || requestedClass.current === classId) return;
@@ -83,10 +85,16 @@ export function ClassPage() {
                   <span><strong>{board.contributorCount}</strong> contributors</span>
                 </div>
                 <div className="board-card-footer"><span>{board.updatedLabel}</span>
-                  {classroom.canManage && board.status === "active" && (
-                    <button className="button button-primary" type="button" onClick={(event) => { event.stopPropagation(); navigate(`/c/${classId}/b/${board.id}/present`); }}>
-                      <Presentation size={18} /> Present
-                    </button>
+                  {classroom.canManage && (
+                    <div className="board-card-actions">
+                      <div className="board-order-controls" role="group" aria-label={`Reorder ${board.title}`}>
+                        <button className="mini-icon" type="button" title="Move board earlier" aria-label={`Move ${board.title} earlier`} disabled={classBoards.indexOf(board) === 0} onClick={(event) => { event.stopPropagation(); void moveBoard(board.id, -1).catch((error) => window.alert(error instanceof Error ? error.message : "Could not move the board.")); }}><ChevronUp /></button>
+                        <button className="mini-icon" type="button" title="Move board later" aria-label={`Move ${board.title} later`} disabled={classBoards.indexOf(board) === classBoards.length - 1} onClick={(event) => { event.stopPropagation(); void moveBoard(board.id, 1).catch((error) => window.alert(error instanceof Error ? error.message : "Could not move the board.")); }}><ChevronDown /></button>
+                      </div>
+                      {board.status === "active" && <button className="button button-primary" type="button" onClick={(event) => { event.stopPropagation(); navigate(`/c/${classId}/b/${board.id}/present`); }}>
+                        <Presentation size={18} /> Present
+                      </button>}
+                    </div>
                   )}
                 </div>
               </div>
